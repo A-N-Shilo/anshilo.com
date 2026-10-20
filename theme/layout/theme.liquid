@@ -77,23 +77,88 @@
         endcase
       endif
     -%}
-    <title>
-      {{ doc_title }}
-      {%- if current_tags %} &ndash; {{ 'general.meta.tagged' | t: tags: current_tags | join: ', ' }}{% endif -%}
-      {%- if current_page != 1 %} &ndash; {{ 'general.meta.page' | t: page: current_page }}{% endif -%}
-      {%- unless doc_title contains shop.name %} &ndash; {{ shop.name }}{% endunless -%}
-    </title>
+    {%- comment -%}
+      כותרת המסמך. שתי תקלות שהסריקה מצאה, ושתיהן מכאן:
 
-    {% if page_description %}
-      <meta name="description" content="{{ page_description | escape }}">
-    {% endif %}
+      1. כל כותרות ה-SEO של המוצרים כבר מסתיימות ב-"| א.נ. שילו", אבל הבדיקה
+         הקודמת חיפשה את shop.name המלא ("א.נ. שילו בע"מ - חנות חומרי בניין
+         ואספקה טכנית"), לא מצאה אותו, והוסיפה אותו שוב. כך כל עמוד מוצר יצא עם
+         שם החנות פעמיים ו-2,357 כותרות נמדדו ארוכות מדי. עכשיו המותג נבדק לפי
+         "שילו", ומתווסף בצורתו הקצרה רק כשהוא באמת חסר ורק כשיש לו מקום.
+      2. ה-title נבנה על פני כמה שורות, וירידת שורה נכנסה לתוכו. הוא נבנה
+         במחרוזת אחת ונפלט בשורה אחת.
+    {%- endcomment -%}
+    {%- liquid
+      assign brand_short = 'א.נ. שילו'
+      assign title_max = 65
+      assign full_title = doc_title | strip_newlines | strip
+      if current_tags
+        assign tags_label = 'general.meta.tagged' | t: tags: current_tags | join: ', '
+        assign full_title = full_title | append: ' – ' | append: tags_label
+      endif
+      if current_page != 1
+        assign page_label = 'general.meta.page' | t: page: current_page
+        assign full_title = full_title | append: ' – ' | append: page_label
+      endif
+      unless full_title contains 'שילו'
+        assign branded_title = full_title | append: ' | ' | append: brand_short
+        if branded_title.size <= title_max
+          assign full_title = branded_title
+        endif
+      endunless
+    -%}
+    <title>{{ full_title | escape }}</title>
+
+    {%- comment -%}
+      תיאור לגוגל. 640 עמודים יצאו בלי meta description בכלל: קטגוריות שאין
+      להן תיאור (ועמודי 2, 3... שלהן), עמודי מותג (/collections/vendors),
+      רשימת הבלוג ועמודי המדיניות. כשאין תיאור, נבנה אחד מתוך העמוד עצמו.
+      בעמוד 2 ואילך מתווסף מספר העמוד, אחרת כל עמודי הקטגוריה חולקים אותו
+      תיאור ונספרים ככפולים.
+    {%- endcomment -%}
+    {%- liquid
+      assign meta_description = page_description | strip_html | strip_newlines | strip
+      # /collections מקבל משופיפיי את תיאור החנות — אותו תיאור כמו עמוד הבית
+      if template.name == 'list-collections'
+        assign meta_description = 'כל המחלקות של ' | append: brand_short | append: ': כלי עבודה, חשמל ותאורה, אינסטלציה וברזים, צבע ואיטום, ניקיון, פרזול, סולמות, קמפינג ומחסן עצים - במקום אחד בקרית ענבים.'
+      endif
+      if meta_description == blank
+        case template.name
+          when 'collection'
+            if collection.handle == 'vendors' or collection.handle == 'types'
+              assign meta_description = 'כל המוצרים של ' | append: collection.title | append: ' ב-' | append: brand_short | append: ' - חומרי בניין, כלי עבודה ואספקה טכנית בקרית ענבים. ייעוץ מקצועי בטלפון, איסוף עצמי מהחנות ומשלוחים.'
+            elsif collection.handle == 'all'
+              assign meta_description = 'כל המוצרים של ' | append: brand_short | append: ' - כלי עבודה, חומרי בניין, חשמל ותאורה, אינסטלציה וצבע. יבואנים רשמיים, ייעוץ מקצועי, איסוף עצמי מקרית ענבים ומשלוחים.'
+            else
+              assign meta_description = collection.title | append: ' ב-' | append: brand_short | append: ': ' | append: collection.all_products_count | append: ' מוצרים מהמותגים המובילים. ייעוץ מקצועי בטלפון, איסוף עצמי מהחנות בקרית ענבים ומשלוחים.'
+            endif
+          when 'blog'
+            assign meta_description = blog.title | append: ' - מדריכים מקצועיים של ' | append: brand_short | append: ' על כלי עבודה, חומרי בניין, צבע, איטום ותחזוקת הבית.'
+          when 'article'
+            assign meta_description = article.excerpt_or_content | strip_html | strip_newlines | truncate: 155
+          when 'page'
+            assign meta_description = page.content | strip_html | strip_newlines | truncate: 155
+          else
+            if request.path contains '/policies/'
+              assign meta_description = doc_title | append: ' של ' | append: brand_short | append: ' - חנות חומרי בניין ואספקה טכנית בקיבוץ קרית ענבים.'
+            endif
+        endcase
+        assign meta_description = meta_description | strip
+      endif
+      if meta_description != blank and current_page != 1
+        assign meta_description = meta_description | append: ' (' | append: page_label | append: ')'
+      endif
+    -%}
+    {%- if meta_description != blank -%}
+      <meta name="description" content="{{ meta_description | escape }}">
+    {%- endif -%}
 
     <meta property="og:site_name" content="{{ shop.name }}">
     <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:title" content="{{ page_title | escape }}">
     <meta property="og:type" content="website">
-    {%- if page_description -%}
-      <meta property="og:description" content="{{ page_description | escape }}">
+    {%- if meta_description != blank -%}
+      <meta property="og:description" content="{{ meta_description | escape }}">
     {%- endif -%}
     {%- comment -%}
       Without a fallback the homepage and every ordinary page shares with no

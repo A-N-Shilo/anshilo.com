@@ -115,10 +115,18 @@
             </li>
           {%- endif -%}
           {%- if settings.store_whatsapp != blank -%}
+            {%- liquid
+              assign wa = settings.store_whatsapp | strip
+              assign wa_scheme = wa | slice: 0, 4
+              unless wa_scheme == 'http'
+                assign wa_digits = wa | remove: '+' | remove: '-' | remove: ' ' | remove: '(' | remove: ')'
+                assign wa = 'https://wa.me/' | append: wa_digits
+              endunless
+            -%}
             <li>
               <a
                 class="error-404__help-item"
-                href="{{ settings.store_whatsapp }}"
+                href="{{ wa }}"
                 target="_blank"
                 rel="noopener"
                 aria-describedby="a11y-new-window-message"

@@ -409,7 +409,15 @@
                   </a>
                 {%- endif -%}
                 {%- if settings.store_whatsapp != blank -%}
-                  <a href="{{ settings.store_whatsapp }}" class="btn btn--ghost" target="_blank" rel="noopener" aria-describedby="a11y-new-window-message">
+                  {%- liquid
+                    assign wa = settings.store_whatsapp | strip
+                    assign wa_scheme = wa | slice: 0, 4
+                    unless wa_scheme == 'http'
+                      assign wa_digits = wa | remove: '+' | remove: '-' | remove: ' ' | remove: '(' | remove: ')'
+                      assign wa = 'https://wa.me/' | append: wa_digits
+                    endunless
+                  -%}
+                  <a href="{{ wa }}" class="btn btn--ghost" target="_blank" rel="noopener" aria-describedby="a11y-new-window-message">
                     {% render 'icon', name: 'whatsapp', size: 17 %}
                     {{ 'general.contact.whatsapp_cta' | t }}
                   </a>
