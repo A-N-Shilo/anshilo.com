@@ -1,4 +1,4 @@
-import { Platform, type TextStyle, type ViewStyle } from 'react-native';
+import { I18nManager, Platform, type TextStyle, type ViewStyle } from 'react-native';
 
 /**
  * מערכת העיצוב של האפליקציה — מראה (mirror) של אסימוני ה-CSS של ת'ים
@@ -266,11 +266,90 @@ export const type = {
   },
 } as const satisfies Record<string, TextStyle>;
 
+/**
+ * הערך שצריך לבקש כדי שטקסט ייצמד **לימין** בפועל.
+ *
+ * זה לא באג באפליקציה אלא התנהגות מתועדת של React Native: כש-
+ * `doLeftAndRightSwapInRTL` דלוק — וזו ברירת המחדל, ובאייפון `RCTI18nUtil`
+ * מדליק אותה מחדש בכל עלייה — הרנדרר **מחליף** `textAlign` שמאל↔ימין תחת RTL.
+ * שני הפלטפורמות עושות את זה:
+ *
+ * - אנדרואיד, `TextAttributeProps.getTextAlignment`:
+ *   `"right" -> if (isRTL) Gravity.LEFT else Gravity.RIGHT`
+ * - אנדרואיד/Fabric, `TextLayoutManager.getTextAlignment`:
+ *   `"right"` → `ALIGN_OPPOSITE`, וההופכי של פסקה בעברית הוא שמאל
+ * - iOS: `NSTextAlignmentRight` מוחלף ל-`NSTextAlignmentLeft`
+ *
+ * כלומר סטייל שכתוב בו `textAlign: 'right'` מגיע למסך כ**שמאל**. זה מה שנמדד
+ * על המכשיר: בלוח המחלקות כל הכותרות — `אבטחה`, `NOA`, `CLICK SWITCH`,
+ * `אביזרי ניקוי` — יצאו צמודות לשמאל, באופן אחיד ובלי קשר לשפה. ומה שכן יצא
+ * מיושר לימין באפליקציה (כותרות המסכים, `SectionHeader`) יושר שם על ידי
+ * flexbox — `alignItems: 'flex-start'` עוטף את הטקסט וממקם אותו בהתחלה, שהיא
+ * ימין ב-RTL — ולא על ידי `textAlign` בכלל.
+ *
+ * לכן מבקשים את הערך ש**שורד** את ההחלפה. זה מתקן את עצמו: אם ההחלפה כבויה,
+ * או שהאפליקציה רצה LTR, הביטוי מחזיר `'right'` ישירות.
+ *
+ * באנדרואיד `'left'` מתנהג כיישור **טבעי** (לפי התו החזק הראשון) ולא כשמאל
+ * קשיח, ולכן מחרוזת שמתחילה בלטינית או בספרה עוד צריכה את `rtlText` למטה.
+ * שני החצאים משלימים זה את זה: `alignEnd` מטפל בעברית, `rtlText` בשאר.
+ */
+const SWAPS_LEFT_RIGHT = I18nManager.isRTL && I18nManager.doLeftAndRightSwapInRTL;
+export const alignEnd: TextStyle['textAlign'] = SWAPS_LEFT_RIGHT ? 'left' : 'right';
+
+/**
+ * יישור לשדות קלט — `TextInput` בלבד, לא `Text`.
+ *
+ * ההחלפה של left/right תחת RTL, שבגללה קיים `alignEnd`, חלה על `Text` אבל
+ * **לא** על הטקסט המוקלד ב-`TextInput`:
+ *
+ * - iOS/Fabric: הטקסט החי של השדה עובר דרך `defaultTextAttributes`, ושם
+ *   ההחלפה מותנית ב-layoutDirection שלא מאוכלס במסלול הזה — הערך נשאר פיזי.
+ * - אנדרואיד: `ReactTextInputManager` ממפה `"right" -> Gravity.RIGHT` ישירות,
+ *   בלי בדיקת RTL — פיזי גם כן.
+ *
+ * נמדד על מכשיר בשדה ההערות בעגלה: עם `alignEnd` ('left' תחת ההחלפה)
+ * ה-placeholder נפל ימינה (הוא UILabel ביישור טבעי) אבל הטקסט שהוקלד נצמד
+ * לשמאל. לכן לשדות קלט מבקשים 'right' פיזי, ולטקסט רגיל ממשיכים עם `alignEnd`.
+ */
+export const inputAlign: TextStyle['textAlign'] = 'right';
+
 /** עברית מיושרת לימין — הצירוף הזה חוזר בכל מסך */
 export const rtl = {
-  text: { textAlign: 'right', writingDirection: 'rtl' },
+  text: { textAlign: alignEnd, writingDirection: 'rtl' },
   center: { textAlign: 'center', writingDirection: 'rtl' },
 } as const satisfies Record<string, TextStyle>;
+
+/**
+ * מוסיף U+200F, RIGHT-TO-LEFT MARK, בתחילת מחרוזת שמגיעה מהחנות.
+ *
+ * זה החצי השני של `alignEnd` למעלה, ולא תחליף לו. `alignEnd` מטפל ביישור;
+ * הפונקציה הזאת מטפלת ב**כיוון הבסיס של הפסקה**, ושני דברים תלויים בו:
+ *
+ * 1. באנדרואיד `'left'` (הערך ש-`alignEnd` מבקש תחת RTL) מתורגם ל-
+ *    `ALIGN_NORMAL`, וזה יישור **טבעי** — לפי התו החזק הראשון. מחרוזת שמתחילה
+ *    בעברית תיפול לימין מעצמה, אבל `CLICK SWITCH` או `3 תוצאות` ייפלו שמאלה.
+ *    הסימן קובע שהתו החזק הראשון הוא RTL, ולכן שתיהן נופלות לימין.
+ * 2. בשתי הפלטפורמות, סדר הרכיבים בתוך מחרוזת מעורבת נקבע לפי כיוון הבסיס.
+ *    `סיקה - sika` בפסקה שכיוון הבסיס שלה LTR מסודר אחרת מאותה מחרוזת בפסקה
+ *    RTL — המקף והמילה הלטינית מחליפים מקום.
+ *
+ * הסימן בלתי נראה, עולה תו אחד, ואינו הופך את סדר הקריאה בתוך הרצף הלטיני:
+ * `CLICK SWITCH` נקרא כרגיל, כי אלגוריתם ה-bidi מטפל ברצף בנפרד.
+ *
+ * להשתמש על **טקסט שמגיע מהחנות או מהודעת שגיאה** — שמות מוצרים, מחלקות,
+ * מותגים, יצרן, תיאורים, מספרי הזמנות ותאריכים. מחרוזות עבריות שכתובות בקוד
+ * לא צריכות את זה: התו הראשון שלהן עברי ממילא.
+ *
+ * **לא** להשתמש על מחירים. `formatMoney` מחזיר `₪1,234.00`, וכיוון בסיס RTL
+ * יזיז את סימן השקל לצד הלא נכון.
+ */
+export function rtlText(value: string | null | undefined): string {
+  if (value == null) return '';
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  return `\u200F${trimmed}`;
+}
 
 /** מספרים בעמודות (מחירים, שעות) — ספרות ברוחב אחיד */
 export const numeric = {
@@ -311,3 +390,44 @@ export const shadows = {
   card: shadow(2, 5, 0.07, 2),
   raised: shadow(6, 14, 0.1, 6),
 } as const;
+
+/* ---------------------------------------------------------------------------
+ * רשת מוצרים
+ * ------------------------------------------------------------------------- */
+
+/**
+ * מספר העמודות ברשת, לפי רוחב החלון.
+ *
+ * הרשתות בכל המסכים היו נעולות על שתי עמודות, וזה בסדר בטלפון לאורך אבל
+ * נשבר בכל מצב אחר: מ-Android 16 המערכת מתעלמת מנעילת הכיוון במכשירים עם
+ * מסך גדול — מתקפלים וטאבלטים — ולכן האפליקציה *תוצג* לרוחב גם אם ביקשנו
+ * לאורך. שני כרטיסים על מסך של 1,000 נקודות הם כרטיס ברוחב חצי מסך, עם
+ * תמונה מוגדלת מעבר לרזולוציה שלה.
+ *
+ * הסף נבחר לפי רוחב כרטיס נוח ולא לפי שמות מכשירים: כרטיס מוצר קריא הוא
+ * בסביבות 160 עד 240 נקודות, ומכאן נגזרות העמודות.
+ *
+ * במיזוג נפגשו כאן שתי מימושים לאותה בעיה — ספי רוחב קבועים מצד אחד,
+ * וגזירה רציפה מרוחב הכרטיס המתוכנן מצד שני. השארנו מקור אמת אחד
+ * (`productGrid`), כי יש לו כיסוי בדיקות על 14 רוחבי מכשירים ובודק
+ * (`tools/responsive-check.py`) שקורא ממנו את הקבוע ומאמת אותו. הפונקציה
+ * הזו נשארת כמעטפת כדי שכל מקומות הקריאה הקיימים ימשיכו לעבוד.
+ */
+export function gridColumns(width: number): number {
+  return productGrid(width).columns;
+}
+
+/**
+ * רוחב אריח בודד ברשת, אחרי הפחתת הריפוד בצדדים והמרווחים שבין העמודות.
+ *
+ * המרווחים הם `columns - 1` ולא `columns` — טעות של מרווח אחד מייצרת גלישה
+ * של האריח האחרון מחוץ למסך, וזה נראה בדיוק כמו תקלת פריסה.
+ */
+export function gridItemWidth(
+  width: number,
+  columns: number,
+  sidePadding: number = spacing.lg,
+  gutter: number = spacing.md
+): number {
+  return (width - sidePadding * 2 - gutter * (columns - 1)) / columns;
+}

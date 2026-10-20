@@ -15,8 +15,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCollections } from '@/api/client';
 import type { Collection, PageInfo } from '@/api/types';
-import { EmptyState, ErrorView, Icon, Skeleton } from '@/components';
-import { colors, productGrid, radius, shadows, spacing, typography } from '@/theme';
+import { CollectionImage, EmptyState, ErrorView, Icon, Skeleton, StoreLogo } from '@/components';
+import { alignEnd, colors, radius, rtlText, shadows, gridColumns, gridItemWidth, spacing, typography } from '@/theme';
 
 const PAGE_SIZE = 24;
 /** יחס גובה-רוחב של אריח קטגוריה */
@@ -57,28 +57,14 @@ function CategoryTile({
       onPress={onPress}
       style={({ pressed }) => [styles.tile, { width, height }, pressed && styles.tilePressed]}
     >
-      <View style={styles.tileImageWrap}>
-        {collection.image != null ? (
-          <Image
-            source={{ uri: collection.image.url }}
-            style={StyleSheet.absoluteFill}
-            contentFit="contain"
-            transition={200}
-            accessibilityLabel={collection.image.altText ?? collection.title}
-          />
-        ) : (
-          <Text
-            style={[styles.letter, { fontSize: height * 0.34 }]}
-            accessible={false}
-            importantForAccessibility="no"
-          >
-            {collection.title.trim().charAt(0)}
-          </Text>
-        )}
-      </View>
+      <CollectionImage
+        image={collection.image}
+        title={collection.title}
+        letterSize={height * 0.34}
+      />
       <View style={styles.tileFooter}>
         <Text style={styles.tileTitle} numberOfLines={2}>
-          {collection.title}
+          {rtlText(collection.title)}
         </Text>
         {/* שברון "קדימה" — ‏dir דואג להיפוך תחת RTL */}
         <Icon name="chevron-forward" size={16} color={colors.textMuted} dir />
@@ -92,7 +78,8 @@ export default function CatalogScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
-  const { columns, cardWidth: tileWidth } = productGrid(width);
+  const columns = gridColumns(width);
+  const tileWidth = gridItemWidth(width, columns);
   const tileHeight = Math.round(tileWidth * TILE_RATIO);
 
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -202,6 +189,7 @@ export default function CatalogScreen() {
     <View style={styles.screen}>
       {/* כותרת מסך — הטאבים ללא header מובנה */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <StoreLogo height={24} style={styles.headerLogo} />
         <View style={styles.eyebrow} />
         <Text style={styles.headerTitle}>מחלקות</Text>
         <Text style={styles.headerSub}>כל מחלקות החנות במקום אחד</Text>
@@ -220,7 +208,7 @@ export default function CatalogScreen() {
           data={collections}
           keyExtractor={(item) => item.id}
           numColumns={columns}
-          key={columns}
+          key={`grid-${columns}`}
           renderItem={renderTile}
           columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={styles.listContent}
@@ -265,6 +253,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     backgroundColor: colors.bg,
   },
+  /* הלוגו נמתח לרוחב הכותרת כדי ש-contentPosition="right" יצמיד אותו לימין */
+  headerLogo: {
+    alignSelf: 'stretch',
+    marginBottom: spacing.xxs,
+  },
   eyebrow: {
     width: 22,
     height: 3,
@@ -275,13 +268,13 @@ const styles = StyleSheet.create({
     fontSize: typography.h1,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   headerSub: {
     fontSize: typography.small,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -349,7 +342,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.small + 5,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -373,7 +366,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     lineHeight: typography.small + 5,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   footerRetry: {

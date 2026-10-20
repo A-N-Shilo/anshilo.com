@@ -193,8 +193,11 @@ def check_app_grid() -> None:
             name = m.group(1)
             if name.isdigit():
                 continue
+            # The key only has to *change* with the column count, so any
+            # expression mentioning the variable qualifies — `key={columns}`
+            # and ``key={`grid-${columns}`}`` are equally correct.
             window = src[max(0, m.start() - 300):m.start() + 300]
-            if not re.search(r"key\s*=\s*\{\s*" + re.escape(name) + r"\s*\}", window):
+            if not re.search(r"key\s*=\s*\{[^}]*\b" + re.escape(name) + r"\b", window):
                 fail("rn-columns-key", f"{rel(path)}:{line_of(src, m.start())}",
                      f"numColumns={{{name}}} changes at runtime but the list has no key={{{name}}}; "
                      f"React Native throws when numColumns changes without a new key")

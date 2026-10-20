@@ -50,6 +50,21 @@ def read(path: str) -> str:
         return fh.read()
 
 
+def read_json(path: str):
+    """Parse a theme JSON file, tolerating the comments Shopify itself writes.
+
+    Shopify allows `/* … */` in template, settings and locale JSON, and its own
+    admin adds an auto-generated header in that form when settings are pulled
+    down. Strict json.loads rejects those files even though the theme runs, so
+    the comments are stripped exactly as the platform strips them.
+    """
+    raw = read(path)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return json.loads(re.sub(r"/\*.*?\*/", "", raw, flags=re.S))
+
+
 def literal_colours(src: str) -> set[str]:
     """Hex colours in `src` that ought to have been a custom property.
 
@@ -128,7 +143,7 @@ if os.path.exists(locale_path):
                     flatten(v, f"{prefix}{k}.")
             else:
                 LOCALE_KEYS.add(prefix.rstrip("."))
-        flatten(json.loads(read(locale_path)))
+        flatten(read_json(locale_path))
     except json.JSONDecodeError as exc:
         err(rel(locale_path), f"invalid JSON — {exc}")
 
@@ -141,7 +156,7 @@ for path in walk("templates", (".json",)) + walk("config", (".json",)) + walk(
     "locales", (".json",)
 ) + walk("sections", (".json",)):
     try:
-        json.loads(read(path))
+        read_json(path)
     except json.JSONDecodeError as exc:
         err(rel(path), f"invalid JSON — {exc}")
 
@@ -391,7 +406,7 @@ for path in walk("assets", (".css",)):
 for path in walk("templates", (".json",)) + walk("sections", (".json",)):
     name = rel(path)
     try:
-        data = json.loads(read(path))
+        data = read_json(path)
     except json.JSONDecodeError:
         continue
     sections = data.get("sections", {}) or {}

@@ -12,8 +12,7 @@ import {
   Text,
   View,
   useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
+  type ViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -29,16 +28,33 @@ import {
   EmptyState,
   ErrorView,
   Icon,
+  ImageZoomModal,
   PriceText,
   ProductCard,
   QuantityStepper,
   SectionHeader,
   Skeleton,
 } from '@/components';
-import { STORE_INFO, TEL_URL, WHATSAPP_URL } from '@/config';
+import {
+  STORE_INFO,
+  TEL_URL,
+  importerForVendor,
+  isAssistantConfigured,
+  whatsappWithMessage,
+} from '@/config';
 import { useCart } from '@/state/CartContext';
+import { useSettings } from '@/state/SettingsContext';
 import { useFavorites } from '@/state/FavoritesContext';
-import { READABLE_MAX_WIDTH, colors, radius, shadows, spacing, typography } from '@/theme';
+import {
+  READABLE_MAX_WIDTH,
+  alignEnd,
+  colors,
+  radius,
+  rtlText,
+  shadows,
+  spacing,
+  typography,
+} from '@/theme';
 
 /* ---------- המרת descriptionHtml לטקסט קריא ---------- */
 
@@ -59,11 +75,40 @@ function htmlToText(html: string): string {
     .replace(/<li[^>]*>/gi, '\n• ')
     .replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6]|\/ul|\/ol)[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, '');
-  return decodeEntities(stripped)
+  const flat = decodeEntities(stripped)
     .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .replace(/\n[ \t]+/g, '\n');
+
+  /*
+   * חלק מהתיאורים הם ייבוא מוורדפרס/Elementor: <ul> שעטוף ב-<li> חיצוני משלו,
+   * ובתוכו עטיפות <div> ריקות. ההמרה הנאיבית הפכה את זה לנקודה בודדת בשורה
+   * ריקה ("• " בלי כלום) ולפערי ענק בין השורות. שלושה תיקונים על השורות:
+   * נקודה שנשארה לבד נמחקת; נקודה שהתוכן שלה גלש לשורה הבאה (כי בין ה-<li>
+   * לטקסט היה <div>) מתאחה איתו; ורצף שורות ריקות מצטמצם לאחת.
+   */
+  const lines = flat.split('\n').map((l) => l.trim());
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (line === '•') {
+      let j = i + 1;
+      while (j < lines.length && lines[j] === '') j++;
+      /* אין תוכן להצמיד — הנקודה מיותרת */
+      if (j >= lines.length || lines[j] === '•' || lines[j].startsWith('• ')) continue;
+      line = `• ${lines[j]}`;
+      i = j;
+    }
+    if (line === '' && (out.length === 0 || out[out.length - 1] === '')) continue;
+    out.push(line);
+  }
+  while (out.length > 0 && out[out.length - 1] === '') out.pop();
+  /* שורה ריקה בין שני פריטי רשימה רק מנפחת — הרשימה נקראת טוב יותר צפופה */
+  const tight = out.filter(
+    (l, i) =>
+      l !== '' ||
+      !(out[i - 1]?.startsWith('• ') === true && out[i + 1]?.startsWith('• ') === true)
+  );
+  return tight.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /* ---------- כפתור עגול צף (חזרה / שיתוף / מועדפים) ---------- */
@@ -127,6 +172,11 @@ export default function ProductScreen() {
   const { width } = useWindowDimensions();
   const { addItem, busy } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
+  /*
+   * הוואטסאפ מההגדרות החיות ולא מהקונפיג: כשמחליפים באדמין את קישור ה-wa.link
+   * במספר בינלאומי, ההודעה המוכנה נדלקת בלי עדכון אפליקציה.
+   */
+  const { whatsappUrl } = useSettings();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,6 +184,8 @@ export default function ProductScreen() {
   const [recommendations, setRecommendations] = useState<ProductCardData[]>([]);
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [galleryIndex, setGalleryIndex] = useState(0);
+  /* התמונה שנפתחה במסך מלא להגדלה; null = סגור */
+  const [zoomIndex, setZoomIndex] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
@@ -279,11 +331,24 @@ export default function ProductScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variantImageUrl]);
 
-  const onGalleryScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (images.length === 0) return;
-    const i = Math.round(e.nativeEvent.contentOffset.x / width);
-    setGalleryIndex(Math.max(0, Math.min(images.length - 1, i)));
-  };
+  /*
+   * העמוד הפעיל בגלריה נקבע לפי מה שנראה בפועל, לא לפי חשבון על contentOffset.
+   *
+   * הגרסה הקודמת חישבה `contentOffset.x / width`. ל-getItemLayout כאן יש
+   * offsets של שמאל-לימין, ותחת RTL רשימה אופקית נפרסת הפוך — האם
+   * contentOffset מסכים עם אותם offsets תלוי פלטפורמה ואינו יציב בין iOS
+   * לאנדרואיד. התוצאה במקרה שהוא לא מסכים: נקודת החיווי מסמנת את התמונה
+   * הממוזגת, כלומר את התמונה הלא נכונה.
+   *
+   * onViewableItemsChanged מדווח על אינדקס הפריט האמיתי ולכן אינו תלוי
+   * בכיוון בכלל. שני האובייקטים חייבים להיות יציבים בין רינדורים — RN
+   * זורק שגיאה אם הם מתחלפים תוך כדי ריצה.
+   */
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const first = viewableItems[0];
+    if (first?.index != null) setGalleryIndex(first.index);
+  }).current;
 
   /* ---------- מלאי / מחיר ---------- */
 
@@ -320,6 +385,7 @@ export default function ProductScreen() {
    * והאפליקציה חייבת להתנהג זהה (theme/snippets/request-price.liquid).
    */
   const unpriced = price == null || isUnpriced(price);
+  const importer = importerForVendor(product?.vendor);
   const salePercent =
     price != null && compareAt != null && parseFloat(compareAt.amount) > parseFloat(price.amount)
       ? Math.round(
@@ -382,12 +448,34 @@ export default function ProductScreen() {
   }, [product, selectedVariant?.sku]);
 
   const requestQuoteByWhatsapp = useCallback(() => {
-    if (WHATSAPP_URL === '') return;
-    const separator = WHATSAPP_URL.includes('?') ? '&' : '?';
-    Linking.openURL(`${WHATSAPP_URL}${separator}text=${encodeURIComponent(quoteMessage)}`).catch(
-      () => {}
+    /*
+     * whatsappWithMessage ולא הדבקת ?text= ידנית: קישור wa.link מתעלם
+     * מפרמטרים, וההדבקה הישנה שלחה טקסט לחלל. ראו config.ts.
+     */
+    const url = whatsappWithMessage(whatsappUrl, quoteMessage);
+    if (url === '') return;
+    Linking.openURL(url).catch(() => {});
+  }, [whatsappUrl, quoteMessage]);
+
+  /* פנייה בוואטסאפ על המוצר — מכל מוצר, עם הודעה מוכנה שמזהה את הפריט */
+  const askOnWhatsapp = useCallback(() => {
+    if (product == null) return;
+    const url = whatsappWithMessage(
+      whatsappUrl,
+      `היי, הגעתי דרך האפליקציה ואני מעוניין במוצר: ${product.title} — ${STORE_INFO.website}/products/${product.handle}`
     );
-  }, [quoteMessage]);
+    if (url === '') return;
+    Linking.openURL(url).catch(() => {});
+  }, [whatsappUrl, product]);
+
+  /* פתיחת המומחה עם שאלה מוכנה על המוצר הנוכחי */
+  const askExpert = useCallback(() => {
+    if (product == null) return;
+    router.push({
+      pathname: '/assistant',
+      params: { q: `אני מתלבט לגבי ${product.title} — למה הוא מתאים ומה כדאי לבדוק?` },
+    });
+  }, [product, router]);
 
   const requestQuoteByPhone = useCallback(() => {
     Linking.openURL(TEL_URL).catch(() => {});
@@ -439,10 +527,16 @@ export default function ProductScreen() {
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               keyExtractor={(im, i) => `${im.url}-${i}`}
-              onMomentumScrollEnd={onGalleryScrollEnd}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
               getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-              renderItem={({ item }) => (
-                <View style={[styles.galleryPage, { width, height: galleryHeight }]}>
+              renderItem={({ item, index }) => (
+                <Pressable
+                  accessibilityRole="imagebutton"
+                  accessibilityLabel={`${item.altText ?? product.title} — הקישו להגדלה`}
+                  onPress={() => setZoomIndex(index)}
+                  style={[styles.galleryPage, { width, height: galleryHeight }]}
+                >
                   <Image
                     source={{ uri: item.url }}
                     style={styles.galleryImage}
@@ -450,7 +544,10 @@ export default function ProductScreen() {
                     transition={200}
                     accessibilityLabel={item.altText ?? product.title}
                   />
-                </View>
+                  <View style={styles.zoomHint} pointerEvents="none">
+                    <Icon name="expand-outline" size={16} color={colors.ink} />
+                  </View>
+                </Pressable>
               )}
             />
           ) : (
@@ -476,7 +573,21 @@ export default function ProductScreen() {
             {product.vendor !== '' && (
               <View style={styles.vendorChip}>
                 <Text style={styles.vendorChipText} numberOfLines={1}>
-                  {product.vendor}
+                  {rtlText(product.vendor)}
+                </Text>
+              </View>
+            )}
+            {/* מדבקת היבואן הרשמי — אותה מדבקה שמופיעה על אריח המותג בדף הבית */}
+            {importer != null && (
+              <View style={styles.importerRow}>
+                <Image
+                  source={{ uri: importer.badgeUrl }}
+                  style={styles.importerStamp}
+                  contentFit="contain"
+                  accessibilityLabel={`יבואן רשמי ${importer.importer}`}
+                />
+                <Text style={styles.importerText} numberOfLines={2}>
+                  {rtlText(`${importer.note} · ${importer.importer}`)}
                 </Text>
               </View>
             )}
@@ -486,7 +597,7 @@ export default function ProductScreen() {
             </View>
           </View>
 
-          <Text style={styles.title}>{product.title}</Text>
+          <Text style={styles.title}>{rtlText(product.title)}</Text>
 
           {price != null && (
             <View style={styles.priceRow}>
@@ -507,7 +618,7 @@ export default function ProductScreen() {
             product.options.map((option) => (
               <View key={option.name} style={styles.optionGroup}>
                 <Text style={styles.optionName}>
-                  {option.name}
+                  {rtlText(option.name)}
                   {selected[option.name] != null && (
                     <Text style={styles.optionValue}>  ·  {selected[option.name]}</Text>
                   )}
@@ -561,11 +672,49 @@ export default function ProductScreen() {
             ))}
           </View>
 
+          {/* ----- שאלות על המוצר: וואטסאפ עם הודעה מוכנה + המומחה ----- */}
+          <View style={styles.askCard}>
+            <Text style={styles.askTitle}>יש שאלה על המוצר?</Text>
+            <View style={styles.askRow}>
+              {whatsappUrl !== '' && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="פנייה בוואטסאפ על המוצר"
+                  onPress={askOnWhatsapp}
+                  style={({ pressed }) => [styles.askButton, pressed && styles.askPressed]}
+                >
+                  <Icon name="logo-whatsapp" size={18} color={colors.success} />
+                  <Text style={styles.askButtonText}>וואטסאפ</Text>
+                </Pressable>
+              )}
+              {isAssistantConfigured() && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="שאלה למומחה של שילו"
+                  onPress={askExpert}
+                  style={({ pressed }) => [styles.askButton, pressed && styles.askPressed]}
+                >
+                  <Icon name="sparkles" size={18} color={colors.accent} />
+                  <Text style={styles.askButtonText}>המומחה של שילו</Text>
+                </Pressable>
+              )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`התקשרות לחנות ${STORE_INFO.phone}`}
+                onPress={requestQuoteByPhone}
+                style={({ pressed }) => [styles.askButton, pressed && styles.askPressed]}
+              >
+                <Icon name="call-outline" size={18} color={colors.ink} />
+                <Text style={styles.askButtonText}>טלפון</Text>
+              </Pressable>
+            </View>
+          </View>
+
           {/* ----- תיאור ----- */}
           {description !== '' && (
             <View style={styles.section}>
               <SectionHeader title="תיאור המוצר" />
-              <Text style={styles.description}>{description}</Text>
+              <Text style={styles.description}>{rtlText(description)}</Text>
             </View>
           )}
         </View>
@@ -614,7 +763,7 @@ export default function ProductScreen() {
           {addError != null && (
             <View style={styles.errorBanner}>
               <Icon name="alert-circle" size={18} color={colors.danger} knockout={colors.dangerSoft} />
-              <Text style={styles.errorBannerText}>{addError}</Text>
+              <Text style={styles.errorBannerText}>{rtlText(addError)}</Text>
             </View>
           )}
           {unpriced ? (
@@ -631,7 +780,7 @@ export default function ProductScreen() {
                   icon={<Icon name="call" size={18} color={colors.onAccent} />}
                   style={styles.addButton}
                 />
-                {WHATSAPP_URL !== '' && (
+                {whatsappUrl !== '' && (
                   <Button
                     title="וואטסאפ"
                     variant="secondary"
@@ -665,6 +814,23 @@ export default function ProductScreen() {
           )}
         </View>
       )}
+
+      {/* מציג התמונות המוגדל — צביטה, הקשה כפולה ודפדוף */}
+      {product != null && (
+        <ImageZoomModal
+          images={images}
+          initialIndex={zoomIndex}
+          fallbackAlt={product.title}
+          onClose={() => setZoomIndex(null)}
+        />
+      )}
+
+      {/*
+        רצועת שורת המצב — התוכן גולל מתחת לכותרת הצפה, ובלי הרצועה הזאת שורות
+        התוכן מתנגשות בשעה וב-5G בראש המסך. הרצועה בצבע הקנבס ומכסה בדיוק את
+        גובה ה-safe area, בלי לזוז עם הגלילה.
+      */}
+      <View style={[styles.statusBarScrim, { height: insets.top }]} pointerEvents="none" />
 
       {/* ----- כותרת צפה ----- */}
       <View
@@ -713,6 +879,13 @@ const styles = StyleSheet.create({
   },
 
   /* כותרת צפה */
+  statusBarScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.surface,
+  },
   floatingHeader: {
     position: 'absolute',
     left: 0,
@@ -794,6 +967,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  importerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 1,
+  },
+  importerStamp: {
+    width: 34,
+    height: 34,
+  },
+  importerText: {
+    flexShrink: 1,
+    fontSize: typography.tiny,
+    lineHeight: typography.tiny + 4,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textAlign: alignEnd,
+    writingDirection: 'rtl',
+  },
   vendorChip: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.pill,
@@ -827,7 +1019,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.h1 + 8,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   priceRow: {
@@ -838,7 +1030,7 @@ const styles = StyleSheet.create({
   sku: {
     fontSize: typography.tiny,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -851,7 +1043,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   optionValue: {
@@ -900,6 +1092,67 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
   },
+  zoomHint: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    insetInlineEnd: spacing.sm,
+    width: 30,
+    height: 30,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  askCard: {
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  askTitle: {
+    fontSize: typography.small,
+    fontWeight: '800',
+    color: colors.ink,
+    textAlign: alignEnd,
+    writingDirection: 'rtl',
+  },
+  askRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  askButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceAlt,
+  },
+  askPressed: {
+    opacity: 0.7,
+  },
+  askButtonText: {
+    fontSize: typography.tiny,
+    fontWeight: '700',
+    color: colors.ink,
+    /*
+     * flexShrink מפורש, כי React Native מאתחל אותו ל-0 ולא ל-1 כמו הדפדפן.
+     * בלעדיו הטקסט נמדד ברוחב השורה המלא שלו ופשוט גולש מעבר לגבול הכפתור:
+     * שלושת הכפתורים חולקים את הרוחב ב-flex: 1, ו"המומחה של שילו" ארוך מדי
+     * לשליש. עם flexShrink הוא מקבל את רוחב הכפתור ומתקפל לשתי שורות.
+     */
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   trustRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -923,7 +1176,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '600',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -936,7 +1189,7 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     lineHeight: typography.body + 9,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -981,7 +1234,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     lineHeight: Math.round(typography.small * 1.5),
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   successBanner: {
@@ -998,7 +1251,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '700',
     color: colors.success,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   successAction: {
@@ -1021,7 +1274,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '600',
     color: colors.danger,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 

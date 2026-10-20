@@ -20,19 +20,14 @@ import {
   Icon,
   ProductCard,
   SectionHeader,
+  CollectionImage,
   Skeleton,
   SkeletonProductCard,
+  StoreLogo,
 } from '@/components';
-import {
-  BRAND_NAMES,
-  HOME_FEED,
-  IMPORTERS,
-  STORE_INFO,
-  STORE_LOGO,
-  TEL_URL,
-  WHATSAPP_URL,
-} from '@/config';
-import { colors, radius, shadows, spacing, typography } from '@/theme';
+import { BRAND_NAMES, IMPORTERS, STORE_INFO, isAssistantConfigured } from '@/config';
+import { useSettings } from '@/state/SettingsContext';
+import { alignEnd, colors, radius, rtlText, shadows, spacing, typography } from '@/theme';
 
 /* ---------- קבועי פריסה ---------- */
 
@@ -106,11 +101,11 @@ function useRegion<T>(load: () => Promise<T>) {
  * handles שלא קיימים בחנות מסוננים בשקט על ידי getCollectionsByHandle, כך
  * ששינוי בקטלוג לא שובר את המסך.
  */
-const loadCollections = async (): Promise<Collection[]> =>
-  getCollectionsByHandle(HOME_FEED.departments);
-/** פס המותגים — אותם מותגים ובאותו סדר כמו "המותגים שאנחנו מייצגים" באתר */
-const loadBrands = async (): Promise<Collection[]> =>
-  getCollectionsByHandle(HOME_FEED.brands);
+/*
+ * המחלקות והמותגים של דף הבית נבנים בתוך הרכיב, כי רשימות ה-handles מגיעות
+ * מ-`useSettings()` — כלומר מהחנות. הלוגיקה עצמה זהה: `getCollectionsByHandle`
+ * מסנן בשקט handles שלא קיימים, ולכן עריכה שגויה באדמין לא שוברת את המסך.
+ */
 
 const loadBestSellers = async (): Promise<ProductCardData[]> =>
   (await getProducts({ first: 6, sortKey: 'BEST_SELLING' })).nodes;
@@ -125,7 +120,7 @@ function RegionError({ message, onRetry }: { message: string; onRetry: () => voi
     <View style={styles.regionError}>
       <Icon name="alert-circle-outline" size={20} color={colors.danger} />
       <Text style={styles.regionErrorText} numberOfLines={3}>
-        {message}
+        {rtlText(message)}
       </Text>
       <Pressable
         accessibilityRole="button"
@@ -158,15 +153,10 @@ function CollectionTile({
     >
       <View style={styles.collectionImageWrap}>
         {collection.image != null ? (
-          <Image
-            source={{ uri: collection.image.url }}
-            style={styles.collectionImage}
-            /* contain, לא cover: חלק מהמחלקות והמותגים מיוצגים בלוגו ולא
-               בצילום, ו-cover חותך אותם. ראו ProductCard וגם מערכת העיצוב
-               של האתר — תמונות קטלוג יושבות על לבן ב-contain. */
-            contentFit="contain"
-            transition={200}
-            accessibilityLabel={collection.image.altText ?? collection.title}
+          <CollectionImage
+            image={collection.image}
+            title={collection.title}
+            letterSize={COLLECTION_TILE_SIZE * 0.34}
           />
         ) : (
           <View style={styles.collectionLetterWrap}>
@@ -178,7 +168,7 @@ function CollectionTile({
         )}
       </View>
       <Text style={styles.collectionTitle} numberOfLines={2}>
-        {collection.title}
+        {rtlText(collection.title)}
       </Text>
     </Pressable>
   );
@@ -219,12 +209,12 @@ function BrandTile({
           />
         ) : (
           <Text style={styles.brandFallback} numberOfLines={2}>
-            {label}
+            {rtlText(label)}
           </Text>
         )}
       </View>
       <Text style={styles.brandName} numberOfLines={2}>
-        {label}
+        {rtlText(label)}
       </Text>
       {importer != null && (
         <View style={styles.importerRow}>
@@ -251,6 +241,27 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width } = useWindowDimensions();
+
+  const {
+    homeDepartments,
+    homeBrands,
+    phoneDial,
+    whatsappUrl,
+    address,
+    hours,
+  } = useSettings();
+
+  /*
+   * מיוצב על מחרוזת ולא על המערך עצמו: `useSettings` מחזיר מערך חדש בכל רענון
+   * (וגם בכל חזרה לחזית), ותלות במערך הייתה מפעילה טעינה מחדש בכל פעם.
+   */
+  const departmentsKey = homeDepartments.join(',');
+  const brandsKey = homeBrands.join(',');
+  const loadCollections = useCallback(
+    () => getCollectionsByHandle(departmentsKey.split(',')),
+    [departmentsKey]
+  );
+  const loadBrands = useCallback(() => getCollectionsByHandle(brandsKey.split(',')), [brandsKey]);
 
   const collections = useRegion(loadCollections);
   const brands = useRegion(loadBrands);
@@ -283,13 +294,13 @@ export default function HomeScreen() {
   );
 
   const callStore = useCallback(() => {
-    Linking.openURL(TEL_URL).catch(() => {});
-  }, []);
+    Linking.openURL(`tel:${phoneDial}`).catch(() => {});
+  }, [phoneDial]);
 
-  const hasWhatsapp = WHATSAPP_URL !== '';
+  const hasWhatsapp = whatsappUrl !== '';
   const openWhatsapp = useCallback(() => {
-    Linking.openURL(WHATSAPP_URL).catch(() => {});
-  }, []);
+    Linking.openURL(whatsappUrl).catch(() => {});
+  }, [whatsappUrl]);
 
   // מדורים ריקים (חנות בלי נתונים) מוסתרים — המסך לעולם לא נשאר ריק כי
   // הכותרת, ההירו וכרטיס יצירת הקשר תמיד מוצגים.
@@ -307,14 +318,7 @@ export default function HomeScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.headerText}>
           {/* הלוגו האמיתי של החנות, מה-CDN — אותו קובץ שההדר באתר מציג */}
-          <Image
-            source={{ uri: STORE_LOGO.horizontal }}
-            style={styles.headerLogo}
-            contentFit="contain"
-            contentPosition="right"
-            transition={200}
-            accessibilityLabel={STORE_INFO.name}
-          />
+          <StoreLogo height={34} />
           <Text style={styles.tagline} numberOfLines={1}>
             {STORE_INFO.tagline}
           </Text>
@@ -400,6 +404,27 @@ export default function HomeScreen() {
               </ScrollView>
             )}
           </View>
+        )}
+
+        {/* המומחה של שילו — כניסה בולטת לעוזר, בין המחלקות למותגים */}
+        {isAssistantConfigured() && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="המומחה של שילו — יועץ קנייה חכם"
+            onPress={() => router.push('/assistant')}
+            style={({ pressed }) => [styles.expertBanner, pressed && styles.expertPressed]}
+          >
+            <View style={styles.expertIconWrap}>
+              <Icon name="sparkles" size={22} color={colors.accent} />
+            </View>
+            <View style={styles.expertTextWrap}>
+              <Text style={styles.expertTitle}>חדש: המומחה של שילו</Text>
+              <Text style={styles.expertSub} numberOfLines={2}>
+                לא בטוחים מה מתאים לעבודה? שאלו את היועץ החכם — והוא ימליץ מתוך הקטלוג שלנו
+              </Text>
+            </View>
+            <Icon name="chevron-back" size={18} color={colors.textMuted} dir />
+          </Pressable>
         )}
 
         {/* פס המותגים — מקביל ל"המותגים שאנחנו מייצגים" באתר */}
@@ -521,7 +546,7 @@ export default function HomeScreen() {
             <Icon name="time-outline" size={16} color={colors.textMuted} />
             <Text style={styles.contactMetaTitle}>שעות פעילות</Text>
           </View>
-          {STORE_INFO.hours.map((row) => (
+          {hours.map((row) => (
             <View key={row.days} style={styles.hoursRow}>
               <Text style={styles.hoursDays}>{row.days}</Text>
               <Text style={styles.hoursValue} maxFontSizeMultiplier={2}>
@@ -531,7 +556,7 @@ export default function HomeScreen() {
           ))}
           <View style={styles.contactMetaRow}>
             <Icon name="location-outline" size={16} color={colors.textMuted} />
-            <Text style={styles.addressText}>{STORE_INFO.address}</Text>
+            <Text style={styles.addressText}>{rtlText(address)}</Text>
           </View>
         </View>
       </ScrollView>
@@ -540,6 +565,48 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  expertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.sm,
+  },
+  expertPressed: {
+    borderColor: colors.accent,
+  },
+  expertIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentSoft,
+  },
+  expertTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  expertTitle: {
+    fontSize: typography.small,
+    fontWeight: '800',
+    color: colors.ink,
+    textAlign: alignEnd,
+    writingDirection: 'rtl',
+  },
+  expertSub: {
+    fontSize: typography.tiny,
+    lineHeight: typography.tiny + 5,
+    color: colors.textMuted,
+    textAlign: alignEnd,
+    writingDirection: 'rtl',
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -566,7 +633,7 @@ const styles = StyleSheet.create({
     fontSize: typography.h2,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   tagline: {
@@ -574,7 +641,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     letterSpacing: 0.4,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   phoneButton: {
@@ -617,7 +684,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.onInk,
     opacity: 0.65,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   heroTitle: {
@@ -625,7 +692,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.h1 + 7,
     fontWeight: '800',
     color: colors.accent,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   heroSub: {
@@ -633,7 +700,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.small + 8,
     color: colors.onInk,
     opacity: 0.85,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   heroCta: {
@@ -786,7 +853,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     lineHeight: typography.small + 5,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   regionRetry: {
@@ -814,14 +881,14 @@ const styles = StyleSheet.create({
     fontSize: typography.h3,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   contactText: {
     fontSize: typography.small,
     lineHeight: typography.small + 7,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   contactButtons: {
@@ -847,7 +914,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '700',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   hoursRow: {
@@ -870,7 +937,7 @@ const styles = StyleSheet.create({
   addressText: {
     fontSize: typography.small,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 });

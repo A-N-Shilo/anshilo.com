@@ -16,8 +16,16 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchProducts } from '@/api/client';
 import type { PageInfo, ProductCardData } from '@/api/types';
-import { EmptyState, ErrorView, Icon, ProductCard, SkeletonProductCard } from '@/components';
-import { colors, productGrid, radius, spacing, typography } from '@/theme';
+import {
+  EmptyState,
+  ErrorView,
+  Icon,
+  ProductCard,
+  SkeletonProductCard,
+  StoreLogo,
+} from '@/components';
+import { useSettings } from '@/state/SettingsContext';
+import { alignEnd, colors, inputAlign, radius, rtlText, gridColumns, gridItemWidth, spacing, typography } from '@/theme';
 
 const PAGE_SIZE = 24;
 const DEBOUNCE_MS = 350;
@@ -25,7 +33,12 @@ const RECENT_KEY = 'shilo.recentSearches';
 const MAX_RECENT = 8;
 
 /** הצעות חיפוש קבועות — מונחים נפוצים בחנות חומרי בניין */
-const POPULAR_SEARCHES = ['מקדחה', 'מברגה', 'טמבור', 'סולם', 'דיסק השחזה', 'ברגים'] as const;
+/*
+ * ההצעות מגיעות מ-`useSettings()` — כלומר מהחנות, וניתנות לעריכה מהאדמין.
+ *
+ * כאן היה קודם מערך מקובע *שני*, שונה מזה שב-`src/config.ts`, והוא זה שהוצג
+ * בפועל — הרשימה שבקונפיג הייתה קוד מת. עכשיו יש מקור אחד.
+ */
 
 function errorText(err: unknown): string {
   return err instanceof Error && err.message !== ''
@@ -66,7 +79,7 @@ function SearchChip({
         numberOfLines={1}
         maxFontSizeMultiplier={1.5}
       >
-        {label}
+        {rtlText(label)}
       </Text>
     </Pressable>
   );
@@ -75,7 +88,9 @@ function SearchChip({
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { columns, cardWidth } = productGrid(width);
+  const columns = gridColumns(width);
+  const cardWidth = gridItemWidth(width, columns);
+  const { popularSearches } = useSettings();
 
   const [text, setText] = useState('');
   const trimmed = text.trim();
@@ -233,10 +248,12 @@ export default function SearchScreen() {
 
   /* ---------- תצוגות ---------- */
 
-  const countLine =
+  /* ‏rtlText: השורה השנייה מתחילה בספרה, ובלי סימן RTL היא נדחפת שמאלה */
+  const countLine = rtlText(
     totalCount === 1
       ? `תוצאה אחת עבור „${executedQuery}"`
-      : `${totalCount} תוצאות עבור „${executedQuery}"`;
+      : `${totalCount} תוצאות עבור „${executedQuery}"`
+  );
 
   const listFooter = loadingMore ? (
     <View style={styles.footer}>
@@ -245,7 +262,7 @@ export default function SearchScreen() {
   ) : footerError !== '' ? (
     <View style={styles.footerError}>
       <Text style={styles.footerErrorText} numberOfLines={2}>
-        {footerError}
+        {rtlText(footerError)}
       </Text>
       <Pressable
         accessibilityRole="button"
@@ -263,6 +280,7 @@ export default function SearchScreen() {
     <View style={styles.screen}>
       {/* כותרת המסך — לטאבים אין header מובנה */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <StoreLogo height={24} style={styles.headerLogo} />
         <View style={styles.eyebrow} />
         <Text style={styles.headerTitle}>חיפוש</Text>
         <View style={styles.searchField}>
@@ -333,7 +351,7 @@ export default function SearchScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>חיפושים פופולריים</Text>
             <View style={styles.chipsWrap}>
-              {POPULAR_SEARCHES.map((q) => (
+              {popularSearches.map((q) => (
                 <SearchChip key={q} label={q} tone="popular" onPress={() => onChipPress(q)} />
               ))}
             </View>
@@ -371,7 +389,7 @@ export default function SearchScreen() {
             data={results}
             keyExtractor={(item) => item.id}
             numColumns={columns}
-            key={columns}
+            key={`grid-${columns}`}
             renderItem={renderCard}
             columnWrapperStyle={styles.columnWrapper}
             contentContainerStyle={styles.listContent}
@@ -402,6 +420,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     backgroundColor: colors.bg,
   },
+  /* הלוגו נמתח לרוחב הכותרת כדי ש-contentPosition="right" יצמיד אותו לימין */
+  headerLogo: {
+    alignSelf: 'stretch',
+    marginBottom: spacing.xxs,
+  },
   eyebrow: {
     width: 22,
     height: 3,
@@ -412,7 +435,7 @@ const styles = StyleSheet.create({
     fontSize: typography.h1,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   searchField: {
@@ -433,7 +456,8 @@ const styles = StyleSheet.create({
     height: '100%',
     fontSize: typography.body,
     color: colors.text,
-    textAlign: 'right',
+    /* inputAlign ולא alignEnd — ב-TextInput היישור פיזי, ראו theme.ts */
+    textAlign: inputAlign,
     writingDirection: 'rtl',
     paddingVertical: 0,
   },
@@ -458,7 +482,7 @@ const styles = StyleSheet.create({
     fontSize: typography.h3,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   clearAll: {
@@ -519,7 +543,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '600',
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   listContent: {
@@ -557,7 +581,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     lineHeight: typography.small + 5,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   footerRetry: {

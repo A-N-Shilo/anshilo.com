@@ -1,12 +1,25 @@
 # HANDOFF — א.נ. שילו · Shilo Pro v2
 
-**Current state: round 6 shipped. Start at §12 for what just changed, then §2.**
-Round 6 is the mobile app only — the theme is untouched since round 5 (§11).
+**Current state: round 18. Start at §26.12 for the final state, then §26.4 and §26.10 for what is blocked and why.**
+Round 18 is supplier imports and the Google Merchant Center cleanup. **§26.4 lists
+six price-sourcing approaches that were measured and failed — read it before
+spending any time on the 102 unpriced products.** Two crawls were mid-flight when
+that session ended; the restart commands are in §26.5.
+
+Rounds 9–17 are the app, the AI assistant and its server — the theme is untouched
+since round 5 (§11).
 
 **Written by the previous agent. Read this before touching anything.**
 Run `git log --oneline` for the current head — the list in §9 stops at the commit
 before this file was added.
-Branch: `claude/shopify-store-modern-design-746p2i` · PR: [#1](https://github.com/ofir-commits/anshilo.com/pull/1) (open, not draft)
+Branch: `claude/shopify-app-hebrew-compat-i1wcji` · PR: [#4](https://github.com/A-N-Shilo/anshilo.com/pull/4) (open, draft) → base `claude/shopify-site-app-upgrade-7zwt0s`
+
+> **Several claims in §2, §6 and §7 below were out of date.** They were true in
+> the sandboxed agent environment this file was started in, and are false when
+> Claude Code runs locally on the owner's Windows machine. Each is corrected in
+> place, and §19 lists them together — the distinction matters more than any
+> individual fact: **a measurement in this file carries the conditions it was
+> taken under. Re-measure before you rely on one.**
 
 ---
 
@@ -26,7 +39,7 @@ Branch: `claude/shopify-store-modern-design-746p2i` · PR: [#1](https://github.c
 
 | Fact | Consequence |
 |---|---|
-| **`anshilo.com` is blocked by the agent proxy.** `curl` returns `CONNECT tunnel failed, 403`. Also tested and blocked: `3007b3-4.myshopify.com` and `cdn.shopify.com` (both return `000`). `storage.googleapis.com` and `fonts.gstatic.com` are open. | You **cannot** load the storefront, screenshot it, or verify HTML. Don't waste calls trying, and don't disable TLS or unset `HTTPS_PROXY`. Verify through the Admin API and the static checkers instead. `theme/tools/shoot.mjs` exists and works — it just needs a network that can reach the store. |
+| ⚠️ **Network reachability depends on where you are running — measure it, don't assume.** *Under the agent proxy:* `anshilo.com`, `3007b3-4.myshopify.com` and `cdn.shopify.com` are all blocked (`CONNECT tunnel failed, 403` / `000`); `storage.googleapis.com` and `fonts.gstatic.com` are open. *Running locally on the owner's Windows machine (round 12, measured):* all three return `200`/`301` and the whitener pulled 1,838 product images straight from `cdn.shopify.com`. What **is** blocked locally is `anshilo-assistant.expo.app` — it resolves to `146.112.61.110`, an OpenDNS block page. That filter poisons DNS only and does not block the host, so `nslookup … 8.8.8.8` plus `curl --resolve` reaches it; see §21. | Run one `curl -o /dev/null -w "%{http_code}"` before concluding anything is unreachable. Where the store *is* reachable, `theme/tools/shoot.mjs` works and the visual pass in §7 stops being blocked. Never disable TLS or unset `HTTPS_PROXY` to force it. |
 | **The org hit its monthly spend limit** during the build. | Subagents/Workflows may fail with `You've hit your org's monthly spend limit`. Assume you are working alone unless a call proves otherwise. |
 | `fonts.googleapis.com` / `fonts.gstatic.com` **are** reachable. | Font subsets were downloaded from there. |
 | `registry.npmjs.org` is reachable. | `npm install` works. |
@@ -42,9 +55,9 @@ Branch: `claude/shopify-store-modern-design-746p2i` · PR: [#1](https://github.c
 | **myshopify domain** | `3007b3-4.myshopify.com` (**not** `anshilo.myshopify.com` — verified via `shop.myshopifyDomain`) |
 | Shop id | `58110246991` |
 | Live theme (**never write to it**) | `שמירה 1` — `gid://shopify/OnlineStoreTheme/141469646927`, role MAIN |
-| **Working preview theme** | `שילו 2026 — העיצוב החדש v6 ⭐` — `gid://shopify/OnlineStoreTheme/148376649807` |
-| Preview URL | `https://anshilo.com/?preview_theme_id=148376649807` |
-| Superseded, owner can delete | `148368425039` (v2), `148371210319` (v3), `148372193359` (v4) and `148375371855` (v5). Each zip import mints a new theme, so these accumulate — delete them from the admin. |
+| **Working preview theme** | `shilov8theme` — `gid://shopify/OnlineStoreTheme/148378648655`. **Confirmed by the owner in round 15; this file named v6 for two rounds after v8 existed.** Always re-check with a `themes` query before deploying — the id here has been wrong before. |
+| Preview URL | `https://anshilo.com/?preview_theme_id=148378648655` |
+| Superseded, owner can delete | `148368425039` (v2), `148371210319` (v3), `148372193359` (v4), `148375371855` (v5), `148376649807` (v6) and `148377370703` (v7). Each zip import mints a new theme, so these accumulate — delete them from the admin. |
 | Disposable theme, owner told to delete | `למחיקה — ייבוא כושל (בלי צבעים)` — `148368293967` |
 | Owner's original copy, mostly untouched | `עותק של שמירה 1` — `148357644367` (12 asset files + one test txt were written to it early on; it is otherwise still an Empire copy) |
 | New navigation menu | handle `shilo-2026-main`, `gid://shopify/Menu/236720193615` — 12 departments, 127 items, 3 levels |
@@ -53,7 +66,7 @@ Branch: `claude/shopify-store-modern-design-746p2i` · PR: [#1](https://github.c
 
 ---
 
-## 3. How to deploy a theme change — the only procedure that works
+## 3. How to deploy a theme change — ⚠ §26.17 FIRST: the repo theme is OLD and must not be pushed. This section describes mechanics only.
 
 The repo is the source of truth. `theme/` maps 1:1 onto the theme root
 (`theme/assets/base.css` → `assets/base.css`).
@@ -145,7 +158,36 @@ palette colour, run the validator — it will tell you if you broke AA.
 
 ---
 
-## 5. Deployed theme vs repo — no known delta
+## 5. Deployed theme vs repo — measured again in round 18: the repo was NEVER deployed. See §26.14 before trusting this section.
+
+> ⚠️ **The heading below was wrong, and believing it would have caused a
+> regression.** `shilov8theme` (`148378648655`) is ahead of the repo, not equal
+> to it. `sections/announcement-bar.liquid` on v8 carries two things `theme/`
+> did not have: `tabindex="-1"` on the link of every non-active rotating item,
+> so hidden announcements are not reachable by keyboard, and a `list` icon
+> option in the block schema. Deploying the repo copy over v8 would have
+> silently reverted both.
+>
+> **Read the file off the theme and diff it before you upsert, every time.**
+> v7 and v8 were created after this section was written and nobody
+> reconciled them back into `theme/`; assume more files differ than the one
+> that has been checked. The repo is the source of truth in intent, not
+> currently in fact.
+>
+> **`layout/theme.liquid` has diverged in BOTH directions — neither copy is a
+> superset.** Measured in round 15:
+>
+> | | repo `theme/` | v8 `148378648655` |
+> |---|---|---|
+> | bytes (LF) | 14,710 | 19,794 |
+> | assistant render (`{% render 'ai-assistant' %}`) | **yes** | **no** |
+> | `/policies/*` page handling — Hebrew heading by handle, breadcrumbs, reading measure, legal-nav | **no** | **yes** (~5KB) |
+>
+> Pushing either file over the other destroys real work. This one needs a
+> deliberate merge, not an upsert. **It is also why the site assistant has
+> never once appeared** — see §23.
+
+### The original claim, kept for the v6 history
 
 **The repo and theme `148376649807` (v6) match.** The previous round's one gap —
 `sections/main-addresses.liquid` with the country-select data-loss guard — went
@@ -185,9 +227,15 @@ This is the part with a live blocker. Read it fully.
 | Domain | `3007b3-4.myshopify.com` — correct and verified. |
 | Icon / splash colours | Moved to the v2 palette (`#0F1729` ink, `#D81E29` accent). |
 | `eas.json` | Present, with `development` / `preview` / `production` profiles. |
-| `app.json` | Build-ready: `com.anshilo.shop` on both platforms, RTL forced, splash configured. |
+| `app.json` | RTL forced, splash configured. **Not** `com.anshilo.shop` on both platforms — iOS is `com.anshilo.shop.test`, deliberately, and §18 is the whole argument. |
 
-### 🚩 THE ONE BLOCKER
+### 🚩 THE ONE BLOCKER — resolved, kept for the procedure
+
+**The token exists and is in `mobile-app/.env` as of round 9.** Everything below
+is still the correct procedure if it is ever lost or rotated; it is no longer
+something to go and do. §12 records where it came from: the owner had already
+created the Headless channel "Shilo Mobile App", and the token merely had not
+been copied into the repo.
 
 No Storefront API token. Either of these satisfies it (env wins):
 
@@ -629,7 +677,7 @@ repo has never been built**:
 | git history | no build/submit commit; `eas.json` arrived with `e03ad3b`, unused since |
 
 **Sharpened once the owner ran `eas init` and `eas build:list`.** An EAS project
-already existed — `@dvir4m/anshilo-shop`, ID `c36b7d96-fe98-47b2-9455-a1c5bff1ccc4`
+already existed — `@a-n-shilo/anshilo-shop`, ID `c36b7d96-fe98-47b2-9455-a1c5bff1ccc4`
 — carrying **7 iOS builds**, two of them made on 2026-07-30, the same day as this
 round. Both are SDK 57, version 1.0.0, build numbers 6 and 7, `distribution:
 store`, built under profile **`testflight`**.
@@ -703,3 +751,1841 @@ by Shopify's **Headless** app (`gid://shopify/App/12875497473`, publication
 1,867.** So the channel is stocked and the data side is ready; the public access
 token simply was never copied into the repo. It is in the admin under
 Sales channels → Headless → Shilo Mobile App → Storefront API.
+
+---
+
+## 13. Round 7 — the "everything is left-to-right" report
+
+The owner installed build 8 and reported: *"לא מותאמת לעברית בכלל, יש מלא כיתוב
+הפוך שהוא משמאל לימין במקום מימין לשמאל."* Seven screenshots came with it.
+
+**The screenshots disproved the headline.** RTL *is* on: the tab bar runs
+right-to-left, the screen headers are right-aligned, the catalog tiles show the
+Round 6 redesign, the Ionicons set is live. The bug is much narrower, and the
+screenshots pinned it exactly.
+
+### The actual defect
+
+In the departments grid, `אבטחה` and `סיקה` sit flush right, while
+`CLICK SWITCH`, `ANAIS`, `SHOVAL`, `NOA` and `YARDEN` sit flush **left** — same
+component, same style object, same render path. Nothing in the style differs, so
+the style is not the cause.
+
+The cause is the alignment iOS ends up resolving. `textAlign: 'right'` is
+swapped to `'left'` under RTL by `doLeftAndRightSwapInRTL`, and the effective
+alignment resolves to **natural** — that is, per the first strong directional
+character of the line. Hebrew-initial strings align right; anything starting
+with a Latin letter or a digit is pushed left. Every symptom the owner saw is
+that one rule:
+
+| String | First strong char | Was |
+|---|---|---|
+| `CLICK SWITCH` | Latin | left |
+| `3 תוצאות עבור „מקדחה"` | digit | left |
+| `2 × מברגה נטענת` (order line) | digit | left |
+| `#1043` (order name) | digit | left |
+| `dvir@4-mine.com` | Latin | left |
+| product descriptions opening with a model number | digit | left |
+
+`writingDirection: 'rtl'` was already set on these styles and did not help,
+which is the tell that the fix has to be in the *content*, not the style.
+
+### The fix — `rtlText()` in `src/theme.ts`
+
+```ts
+export function rtlText(value: string | null | undefined): string {
+  if (value == null) return '';
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  return `‏${trimmed}`;
+}
+```
+
+U+200F RIGHT-TO-LEFT MARK is invisible, costs one character, and gives the line
+a strong RTL character up front — so the paragraph's base direction is RTL and
+the alignment resolves right, every time, regardless of what the shop happens to
+have typed. It does **not** reverse the Latin run: `CLICK SWITCH` still reads
+left-to-right inside the line, because the bidi algorithm handles the run. Same
+behaviour on both platforms, and it ships over EAS Update — no rebuild.
+
+Applied to text **that comes from the shop or from an error**: product and
+department and brand titles, vendor names, descriptions, option names, cart line
+titles and option labels, order names and dates and line items, customer name /
+email / phone / address, search result counts and chips, and every error banner.
+
+**Deliberately not applied to money.** `formatMoney` returns `₪1,234.00`; an RTL
+base direction would move the `₪` to the wrong end. Prices keep their own
+direction and are positioned by flexbox, not by `textAlign`.
+
+Static Hebrew literals in the source need nothing — their first character is
+already Hebrew.
+
+### Two more things from the same screenshots
+
+**The version footer lied.** It read `Constants.nativeApplicationVersion ?? '1.0.0'`,
+and the hardcoded fallback is what displayed once the app moved to 1.0.1. It now
+falls back to `Constants.expoConfig?.version` — which tracks `app.json` and
+updates with the code — and appends the native build number, so the owner can
+read which TestFlight build is actually installed instead of guessing. That
+question came up three separate times in Round 6.
+
+**The logo was only on two screens.** The owner asked for it to appear more.
+`src/components/StoreLogo.tsx` is now the single definition (`contentPosition:
+'right'` is what pins it to the right edge under RTL — `contentFit: 'contain'`
+alone centres it), and it sits in the header of home, departments, search and
+cart. The `more` screen keeps its own square-mark-on-ink treatment; that one is
+deliberate, not a duplicate to collapse.
+
+### Verified, not assumed
+
+- `npx tsc --noEmit` — clean
+- `npx expo export --platform ios` — 1,200 modules bundled
+- The compiled Hermes bundle was searched for the marks: U+200F present 18×,
+  U+200E (the LTR mark that keeps `-25%` from becoming `25%-`) present 36×, both
+  as UTF-16LE. The escape survives Metro and Hermes.
+- `npx expo lint` could not run — no ESLint config in the project, and the proxy
+  blocked the automatic install. Not a regression; it has never been configured.
+
+---
+
+## 14. Round 8 — the Round 7 diagnosis was wrong; here is the measured one
+
+The owner pushed back on Round 7: *"אתה לא רואה שיש מקרים שהטקסט מתחיל משמאל
+במקום בימין ואין התאמה מושלמת לעברית?"* — and sent the last two screenshots.
+
+They were right. **Do not trust the Round 7 explanation above; it is wrong.**
+
+### What Round 7 got wrong
+
+Round 7 claimed the effective alignment was *natural* — resolved per the first
+strong character — on the evidence that `אבטחה` sat right while `CLICK SWITCH`
+sat left in the departments grid. That reading of the screenshot was simply
+incorrect, and the fix that followed from it (`rtlText` alone) could not have
+worked.
+
+This round the screenshots were **measured** instead of eyeballed, with Pillow +
+numpy: find the card, threshold against the background colour, group the ink into
+horizontal bands, and print each band's left and right extent. The hero card on
+the home screen:
+
+| line | left | right |
+|---|---|---|
+| eyebrow `חומרי בניין ואספקה טכנית` | 74 | 533 |
+| title line 1 `כל מה שהמקצוענים` | 76 | 763 |
+| title line 2 `צריכים` | 76 | 307 |
+| paragraph line 1 | 75 | 920 |
+| paragraph line 2 | 75 | 693 |
+| CTA button `לכל המחלקות` | 583 | 1010 |
+
+**Every text line shares the same left edge (74–76) and no two share a right
+edge.** All of it is hard **left**-aligned — including the paragraph, which
+Round 7 read as right-aligned. And the CTA, whose only positioning is
+`alignSelf: 'flex-start'`, sits at the *right* — so Yoga's direction genuinely is
+RTL. The departments grid says the same thing: `אבטחה`, `NOA`, `CLICK SWITCH`,
+`אביזרי ניקוי` all start immediately right of the chevron with the slack on the
+right. Hebrew and Latin behave **identically**. Nothing about natural alignment.
+
+### The real cause
+
+`textAlign: 'right'` is delivered to the renderer as **left** under RTL. This is
+documented React Native behaviour, not a bug in this app — when
+`doLeftAndRightSwapInRTL` is on (the default, and `RCTI18nUtil` re-arms it on
+every launch) the renderer swaps left↔right. Both platforms:
+
+- `TextAttributeProps.getTextAlignment`:
+  `"right" -> if (isRTL) Gravity.LEFT else Gravity.RIGHT`
+- `TextLayoutManager.getTextAlignment` (Fabric): `"right"` → `ALIGN_OPPOSITE`,
+  and the opposite of a Hebrew paragraph is left
+- iOS: `NSTextAlignmentRight` → `NSTextAlignmentLeft`
+
+Which raises the obvious question — why did anything align right? Because
+**everything that looked correct was aligned by flexbox, not by `textAlign`.**
+The screen headers and `SectionHeader` wrap their text in a container with
+`alignItems: 'flex-start'`, which shrink-wraps the Text and places it at the
+start — the right, under RTL. `textAlign` never mattered there. The bug was
+visible only where a Text was full-width or `flex: 1`, and every one of those
+was wrong. 57 style declarations were asking for the wrong value.
+
+### The fix
+
+`alignEnd` in `src/theme.ts` asks for the value that *survives* the swap:
+
+```ts
+const SWAPS_LEFT_RIGHT = I18nManager.isRTL && I18nManager.doLeftAndRightSwapInRTL;
+export const alignEnd: TextStyle['textAlign'] = SWAPS_LEFT_RIGHT ? 'left' : 'right';
+```
+
+Self-correcting: with the swap off, or the app running LTR, it returns `'right'`
+directly. All 55 inline `textAlign: 'right'` across the nine screens, plus
+`rtl.text`, now use it.
+
+### `rtlText` is still needed — as the other half, not as the fix
+
+It is not redundant, for two reasons:
+
+1. On Android `'left'` maps to `ALIGN_NORMAL`, which *is* natural alignment. A
+   Hebrew-initial string lands right on its own; `CLICK SWITCH` or
+   `3 תוצאות` would still land left. The mark fixes those.
+2. On both platforms the base direction decides the order of runs inside a mixed
+   string. `סיקה - sika` orders differently in an LTR-base paragraph than in an
+   RTL one — the hyphen and the Latin word trade places.
+
+So: **`alignEnd` handles Hebrew, `rtlText` handles everything else.** Neither
+alone is sufficient. Round 7 shipped one half and called it done.
+
+### Also fixed
+
+The product screen let content scroll under the floating buttons with nothing
+behind the status bar, so trust rows collided with the clock and the 5G
+indicator (visible in IMG_3230). A `statusBarScrim` of `insets.top` height in the
+canvas colour now sits behind it.
+
+### Verified
+
+`tsc --noEmit` clean; `expo export --platform ios` bundles 1,200 modules. The
+alignment itself cannot be verified from here — it needs a device. The
+measurement scripts are the check that matters, and they are what should be used
+on the next screenshots rather than reading them by eye.
+
+---
+
+## 15. Round 9 — "המומחה של שילו", and a server to run it
+
+An AI shopping adviser, on the site and in the app, backed by a new
+`assistant-server/`. It is an Expo API-routes project deployed to EAS Hosting at
+`https://anshilo-assistant.expo.app`, and it runs an agentic loop: the model gets
+two tools against the Shopify **Storefront** API — `search_catalog` and
+`get_product` — and answers in Hebrew from real inventory rather than from
+training data.
+
+It takes whichever provider key is configured. `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY`; the route picks by which one is present. Both paths share the
+tool definitions and differ only in wire format.
+
+The server is **stateless by design** — no database, no file writes, and the
+request body is `{ messages, source }` with no user id, email or device id. That
+is not an accident, and it is what lets the App Privacy questionnaire declare the
+chat as *Not Linked to You* (`docs/SUBMISSION.md` §3א). Conversations live on the
+client. Do not add server-side history without redoing that declaration.
+
+## 16. Round 10 — the 502, which was not a bug in the code
+
+`/health` was green, every environment variable was present, and `POST /chat`
+returned 502 after eighteen seconds with one line in the EAS log:
+
+```
+ERROR  chat: empty final text from model
+```
+
+No provider error, so the OpenAI calls had *succeeded*. The model is
+`gpt-5-mini`, a reasoning model, and reasoning tokens are billed inside
+`max_completion_tokens`. That was set from a shared `MAX_TOKENS = 1200`. The
+model spent the whole allowance thinking, returned empty `content` with
+`finish_reason: 'length'`, `runOpenAiLoop` returned `''`, and `extractReply`
+turned that into a 502.
+
+Three changes, and the third is the one that matters:
+
+1. A separate, larger budget for the OpenAI route. The shared `MAX_TOKENS` is
+   reasonable for the Anthropic path and was left alone.
+2. `reasoning_effort: 'low'`, sent **only** when the model id starts with
+   `gpt-5`. Other models reject the parameter.
+3. `console.error` on both silent returns — the empty-content branch and the
+   loop-exhausted branch — logging `finish_reason` and content length.
+
+Without (3) this cost hours. A silent `return ''` inside a retry loop produces
+exactly one useless log line and no way to tell an empty answer from a refusal
+from an exhausted budget. **Any branch that returns a falsy value to the caller
+should say why.** Two adjacent fixes came from the same investigation: the server
+was rejecting requests by `Origin`, and it now reports what the provider actually
+said instead of collapsing everything into a generic failure.
+
+## 17. Round 11 — persistence, and a whitener
+
+**Conversations survive closing the chat.** App via `AsyncStorage`, following the
+existing `CartContext` / `FavoritesContext` pattern; site via `localStorage` in
+`ai-assistant.liquid`. Both get a way to start a new conversation.
+
+**`mobile-app/scripts/whiten-product-images.js`** turns coloured studio
+backgrounds white — written for Hagit's ladder photos, shot on navy
+`51,62,118`, which stood out badly inside the white product cards.
+
+Two things in it are load-bearing and easy to "simplify" wrongly:
+
+- The replacement is **global, not a flood fill from the border**. In a ladder
+  photo the gaps between the rungs are fully enclosed by the frame, so a fill
+  crawling inwards never reaches them and leaves a blue rectangle in every gap.
+  On a uniform studio background, every pixel of the background tone *is*
+  background, enclosed or not.
+- What replaces the flood fill as the safety net is a **largest-remaining-blob**
+  measurement. A product the same colour as its background — a blue tool on blue
+  — shatters into fragments, the blob collapses toward zero, and the image is
+  rejected instead of destroyed.
+
+Default is a dry run: nothing is written to the store, before/after samples are
+saved to `mobile-app/whiten-samples/` (untracked), and `--apply` needs
+`SHOPIFY_ADMIN_TOKEN` with `write_products` and `write_files`. **That token is
+not in `.env`** — applying is gated on the owner regardless of approval.
+
+## 18. Round 11 — the bundle identifier, and why it flip-flopped
+
+Read `docs/SUBMISSION.md` §1 first; this is the history behind it.
+
+`6975f47` changed `ios.bundleIdentifier` to `com.anshilo.shop`, calling `.test`
+a leftover. **That contradicted the decision recorded in §12**, where the owner
+was presented with the choice and chose to keep `.test` because App Store Connect
+record `6796238101` is registered against it.
+
+`ef71fda` reverted it, but for a different reason: the change moves the runtime
+fingerprint `7b46ea78` → `b6fa75cd`, and holding it in the branch made installed
+build 11 unreachable over the air, since an update publishes under the
+fingerprint of the source it was built from. Reverting the one line put the
+fingerprint back exactly and let the round's JavaScript ship immediately.
+
+So the repo now says `.test` in `app.json` and *"re-apply this when building for
+submission"* in the commit log. **Following that instruction produces a binary
+that does not match record `6796238101` and fails after the build wait.** The
+decision is unresolved and belongs to the owner; both options and their costs are
+in `docs/SUBMISSION.md`. The identifier is never shown to a customer.
+
+Also this round, and genuinely required: an in-app account deletion route
+(`mobile-app/app/account.tsx:117`) for App Review 5.1.1(v). Shopify exposes no
+customer-delete mutation on the Storefront or Customer Account API, so the screen
+submits a request with the customer's identity pre-filled. Two channels, because
+`mailto:` fails silently on a device with no mail account configured.
+
+## 19. Round 12 — the zoom, the slider, and the fingerprint discipline
+
+Both are in `e042003`; the commit message carries the full reasoning.
+
+**Zoom.** A `Pressable` carrying the double-tap sat between the `ScrollView`'s
+content view and the `Image`. UIScrollView scales its *content view*, so the
+wrapper took the scaling while the Image kept fixed dimensions and never
+reflowed; with `centerContent` the offset maths went wrong and a deep pinch threw
+the picture off screen. The Image is now the only child, the content has an
+explicit size, and the double tap listens on the ScrollView itself — **a touch
+handler is not a view**, so it cannot reintroduce the layer.
+
+**Slider.** Price filtering moved to a two-handle range slider on core
+`PanResponder`. Handles are placed with `insetInlineStart`, so fraction 0 sits at
+the start edge — the right, under RTL. Because a rising fraction walks the handle
+leftwards, a rightward drag must *lower* the value: `PanResponder` reports `dx`
+in physical screen coordinates and does not mirror itself. Bounds come from the
+collection's own `PRICE_RANGE` facet, verified against the live API; collections
+without that facet exist, so the number fields remain as the fallback.
+
+### The rule this round established
+
+**Measure the fingerprint before and after any dependency change.** Adding
+`react-native-gesture-handler` and `react-native-reanimated` to `package.json`
+was measured: `7b46ea78` → `4ffc9a1f`. Moved. It was reverted and the feature
+built on core APIs instead. There is also **no `babel.config.js` in this
+project**, and Reanimated 4 does not work without the worklets plugin — so that
+route was a crash risk, not merely a deployment risk.
+
+```bash
+npx expo-updates fingerprint:generate --platform ios
+```
+
+### Corrections to earlier sections
+
+- **§2's network table** was environment-specific, not permanent. See the
+  corrected row. The general lesson: this file records measurements, and a
+  measurement carries the conditions it was taken under. Re-measure.
+- **§6's "ONE BLOCKER"** is resolved — the Storefront token is in `.env`.
+- **§6 said `app.json` is `com.anshilo.shop` on both platforms.** It is not, and
+  §18 explains why that is deliberate.
+- **§7 item 3 says `cdn.shopify.com` is blocked so nobody has seen the logo
+  pixels.** Locally it is reachable; that check can now actually be done.
+- **§7 item 4's catalogue counts** predate the whitener's audit of 1,838
+  product images. They were about prices and inventory, not photos, so they
+  still stand — but `docs/STORE-HEALTH.md` has no photo section and should
+  gain one.
+
+### Knowingly left / needs eyes
+
+- **The assistant has never been verified end-to-end since the 502 fix.** The
+  host is DNS-blocked from the owner's machine and unreachable under the agent
+  proxy, so no round has actually seen `/chat` return 200. **Test it from a
+  phone.** If it is broken during App Review, it is a visibly broken feature.
+- The zoom and slider need a device. `tsc --noEmit` is clean and
+  `expo export` bundles, which proves neither gesture.
+- Round 8's measurement scripts are still the right way to judge screenshots.
+  Do not go back to reading them by eye.
+
+## 20. Round 13 — the whitener was nominating photos that were already white
+
+Two thirds of the candidate list was not a candidate. The full-catalogue dry run
+reported **94** images to whiten; **35 of them already had white backgrounds.**
+
+The "is the background already white?" test runs on a probe **48 pixels wide**.
+At that size every border pixel is an average of dozens, so a product touching
+the edge of the frame bleeds a mid tone into the border and drags it under the
+250 threshold. Twelve sampled candidates were measured at full resolution:
+border tone `254`–`255`, border 96%–100% white, and every one was selected.
+
+Whitening those is not an improvement, it is a small loss. With no coloured
+background to remove, what the fill erases is the soft shading on white products
+— the white KRAUSS step ladder and the white BONA bottles each lost 0.24%–0.34%
+of their product pixels, flattened to pure white, for nothing in return.
+
+The full-resolution border check now runs **before** the decision instead of only
+after the fill. It costs nothing: the full image is already loaded and
+`borderIsWhite` already ran on it a few lines later.
+
+| | before | after |
+|---|---|---|
+| already white | 1,647 | **1,719** |
+| candidates | 94 | **59** |
+| non-uniform, untouched | 97 | **60** |
+| "extensive locked background" warnings | 4 | **0** |
+
+The warnings vanishing is the same finding from the other side: the "locked"
+area they measured was the white background enclosed by the product outline.
+
+Two reporting fixes followed. **Risky images are now always sampled**, outside
+the twelve-sample quota — the report told the owner to go and look at samples of
+them, and the quota fills in `mapLimit` arrival order, so those samples had never
+once been written. And the candidate list is **split by background tone**,
+because replacing Hagit's navy `51,62,118` and erasing a drop shadow from an
+already-white photo are different decisions that were being reported as one
+number: **50 coloured, 9 shadow-only.** Truncated lists now say how many they
+omitted.
+
+The nine shadow-only images are a question about how the catalogue should look,
+not a defect, and they are the only part still waiting on the owner.
+
+### Also this round
+
+- `docs/SUBMISSION.md` — the submission audit that round 12 was cut off before
+  delivering. What the code already satisfies, what only an account holder can
+  do, and what is missing (every store screenshot, the Play feature graphic, a
+  Play record at all, and `serviceAccountKeyPath` in `eas.json`, without which
+  `eas submit --platform android` stops).
+- The Android preview APK that round 12 left building **finished**, ten minutes
+  after that conversation ended: versionCode 2, runtime `0015047`, from
+  `e042003`. It is the current code and installable.
+- The production Android AAB is **orphaned** — runtime `0645f78d`, built from
+  older source. A new production build is required before uploading to Play.
+
+## 21. Round 14 — the zoom, measured; and what review will actually catch
+
+### The zoom bug was three bugs
+
+The owner reported the same defect after round 12: enlarge the product
+image, touch it, it leaves the screen. Round 12's fix could not have
+worked, and two more faults were sitting beside it.
+
+1. **There was no zoom at all on Android.** `maximumZoomScale`,
+   `minimumZoomScale`, `centerContent` and `pinchGestureEnabled` are
+   marked `@platform ios` in react-native's own `ScrollView.js`. The
+   whole feature was iOS-only, on an app about to ship to Play.
+2. **The parent `FlatList` swallowed the gesture.** Measured, not
+   guessed: an on-screen counter in the modal showed the child's
+   `onMoveShouldSetPanResponder` was **never called once**, because the
+   native ScrollView intercepts moves before a JS child can negotiate.
+   (`console.log` is useless here — release builds do not forward it to
+   logcat. Render the diagnostic into the view and screenshot it.)
+   Toggling `scrollEnabled` to dodge this is what caused round 12's
+   jumps.
+3. **Nothing constrained the translation.** UIScrollView moves
+   `contentOffset` and has no concept of an image boundary.
+
+### The fix
+
+No ScrollView in the component at all. One `PanResponder` decides
+between paging, panning and pinching, and the translation is clamped to
+the rendered `contain` box on every tick, which makes escaping
+unrepresentable. Pinch anchoring uses `t₁ = f₁ − (s₁/s₀)·(f₀ − t₀)`.
+
+Verified: 288,000 randomised pinch/pan/double-tap states over six aspect
+ratios, zero escapes, anchor drift 3e-13 px. On a Pixel 8 emulator
+against the live catalogue: double tap zooms anchored, dragging a zoomed
+image pans it and it stays flush to both edges, dragging an unzoomed one
+snaps back with no drift. **Pinch and multi-image paging are not device
+verified** — `adb` cannot inject a second touch.
+
+Fingerprint measured unchanged, so it shipped over the air to build 11.
+
+### Testing on the local emulator — it works, use it
+
+`Pixel_8` AVD exists on the owner's machine. The EAS preview APK is
+universal (`x86_64` included), so `adb install` works, and the `preview`
+channel is the way to get a JS change onto it:
+
+```bash
+"$ANDROID_HOME/emulator/emulator.exe" -avd Pixel_8 &
+adb install -r <preview apk>
+eas update --branch preview --environment preview
+# force-stop and relaunch twice: first fetches, second runs
+```
+
+Two traps when driving it with `adb`: swipes that start within ~50px of
+the left or right edge trigger the system back gesture and close the
+screen, and `input tap` pairs are too slow to reliably register as a
+double tap.
+
+### Submission — what was fixed and what review will still catch
+
+**Fixed:** the app linked to no privacy policy anywhere, from an app that
+offers account creation. Four policies now sit under "מידע משפטי" on the
+More screen (`anshilo.com/policies/*`, verified live).
+
+**Checked against the built APK's manifest rather than app.json:**
+`targetSdk` 36, no camera/location/contacts. But `SYSTEM_ALERT_WINDOW`
+is present, merged from react-native's *debug* manifest, unused, and
+sensitive to Google.
+
+**The batching rule — this is the important one.** `supportsTablet:
+false` was measured and moves **both** fingerprints at once
+(`ios 7b46ea78 → bbb8a1c2`, `android 0015047 → 3c10e085`). So does any
+other native config change. Applying one and waiting orphans the
+installed build from its updates, which is precisely what `6975f47` did
+with the bundle id. The bundle id, `supportsTablet` and the permission
+removal must be applied **together**, immediately before the submission
+build, rebuilding both platforms. `docs/SUBMISSION.md` §2א carries this.
+
+`supportsTablet` is `true` today, so Apple reviews on iPad and wants
+12.9" screenshots of an app nobody has opened on one. Google separately
+requires a web URL for account deletion that works without installing
+the app; no such page exists.
+
+**Guideline 2.1 checked:** with the network off the app does not crash —
+each section shows a Hebrew error with a retry and navigation stays
+usable.
+
+### The assistant is verified end to end — the block was DNS only
+
+Rounds 10 to 13 all carried "nobody has ever seen `/chat` return 200" as
+the top open risk. It is now closed, and the thing that unblocked it is
+worth keeping: **the OpenDNS filter on the owner's machine only poisons
+DNS.** The host itself is reachable, so resolve it elsewhere and pin the
+address:
+
+```bash
+nslookup anshilo-assistant.expo.app 8.8.8.8     # -> 104.18.21.213 (Cloudflare)
+curl --resolve anshilo-assistant.expo.app:443:104.18.21.213 \
+     https://anshilo-assistant.expo.app/health
+```
+
+Measured results:
+
+| call | result |
+|---|---|
+| `/health` | 200 — `openai: true`, `anthropic: false`, `storefront: true` |
+| `/chat`, English | 200 in ~4s, searched the catalogue, two real Makita drills with prices |
+| `/chat`, Hebrew | 200 in ~10s, two real products with prices and stock, answered in Hebrew |
+
+The round-10 fix works. The app's `TIMEOUT_MS` is 30s against a 10s worst
+case, so the margin is fine.
+
+**A warning about testing it, which cost a wrong diagnosis here.** Hebrew
+passed to `curl -d '…'` from Git Bash on Windows is mangled before it
+leaves the shell, and the model then replies "נראה שההודעה נחתכה" — which
+reads exactly like a server bug and is not one. Put the JSON in a file
+and use `--data-binary @file`. Rule out the harness before blaming the
+service.
+
+### The owner's own network blocks the assistant as malware
+
+Worth separating from the DNS workaround above, because it is not an
+environment quirk — it affects real use. The emulator inherits the host
+resolver and resolves `anshilo-assistant.expo.app` to
+**`hit-malware.opendns.com`**. OpenDNS has the assistant's host
+classified as malware. Shopify resolves normally, so everything else in
+the app works and only the assistant looks broken, presenting in the UI
+as "אין חיבור לאינטרנט".
+
+Restarting the emulator with `-dns-server 8.8.8.8` fixed it completely,
+and the assistant then returned a full Hebrew answer with a real product
+carousel in the app (`docs/store-assets/05-assistant.png`). Apple and
+Google reviewers are not on that network, so this is not a review risk —
+but anyone on the shop's Wi-Fi, including the owner testing on a phone,
+sees a broken feature. The fix is an allow-list entry in the
+OpenDNS/Umbrella dashboard, not a code change.
+
+### The logo has now actually been looked at
+
+§7 item 3 said `cdn.shopify.com` was blocked so no agent had ever seen
+the header logo's pixels, and the identification rested on the live
+theme's configuration. It has now been fetched from
+`anshilo.com/cdn/shop/files/final-logo-for-the-website.png` and viewed:
+500×100, exactly 5:1, navy and red wordmark with the roof mark, on an
+**opaque white plate** — no transparency. The §7 identification was
+correct. The white plate is why `docs/store-assets/feature-graphic-1024x500.png`
+is built on white rather than on the ink colour; on navy the logo would
+sit inside a visible white box.
+
+## 22. Round 15 — the browser pass in §7 finally happened
+
+§7 ranked "a human/browser visual pass" as the highest-value remaining work
+and called it blocked for agents. It was blocked only by the network, and
+locally the storefront is reachable, so `theme/tools/shoot.mjs` runs.
+
+```bash
+npm install playwright --no-save        # in a scratch dir; ESM ignores NODE_PATH,
+npx playwright install chromium         # so run the script from where it resolves
+node shoot.mjs 148376649807 ./shots
+```
+
+Twenty-four page loads, desktop 1440 and mobile 390. **No horizontal
+overflow, no Liquid errors, no broken images, no leftover Empire assets,
+no undersized tap targets, `dir="rtl"` everywhere.** The design was looked
+at, not just audited: header logo proportionate on mobile, hero, search,
+collection grid, product page and empty cart all hold up.
+
+### The one real defect it found
+
+The announcement bar's third message — *"אנשי מקצוע? הזמינו רשימת מקטים
+שלמה בלחיצה אחת"*, the most commercial line on the site, shown on **every
+page** — linked to `/pages/quick-order`, which **404s on the live store**.
+`sections/quick-order.liquid` exists and the link is set in
+`sections/header-group.json`, but the page resource was never created in
+the admin.
+
+Fixed defensively rather than by deleting the block: a link whose target
+is `/pages/<handle>` now renders as plain text when `pages[handle]` is
+blank. Verified on the preview theme — the `/pages/contact` message is
+still a link because that page exists, the quick-order one is now text,
+and `a[href*="/pages/quick-order"]` count is zero. **Create the page and
+the link returns by itself**, no theme change needed: Pages → Add page,
+handle `quick-order`, template `quick-order`.
+
+### Two environment facts for whoever runs this next
+
+- **There is no real Python on this machine** — `python` resolves to the
+  Windows Store stub, so `theme/tools/validate.py` (one of the three green
+  checks in §4) cannot run here. The browser pass is the stronger check
+  anyway; it tests the rendered page rather than the source.
+- **`themeFilesUpsert` returns fewer bytes than the local file, and that is
+  correct.** The upsert reported 5,655 against 5,799 on disk — exactly 144
+  fewer, one per line break, because git checks the repo out CRLF on
+  Windows and the theme stores LF. §3 says to compare the two numbers;
+  expect them to differ by the line count, not to match.
+- Only pages published to the Headless channel come back from the
+  Storefront API, and **zero pages are published to it**, so
+  `pages(first:60)` returns an empty list even though `/pages/contact`
+  renders fine. Do not use that query to decide whether a page exists —
+  ask the storefront over HTTP.
+
+### Round 15 correction — the audit and the fix went to the wrong theme first
+
+The visual pass and the announcement-bar fix above were run against
+`148376649807` (v6), because §2 named it the working preview. **The owner
+corrected it mid-round: the current preview is `shilov8theme`,
+`148378648655`.** Both were redone against v8, which produced the same clean
+audit and the same dead-link fix, verified there.
+
+Two lessons, and the second is the expensive one:
+
+1. §2's theme id is a moving value written down as a fact. v7 and v8 both
+   appeared after it was written. Run a `themes` query first — the list shows
+   `updatedAt`, and the newest non-MAIN theme is almost always the answer.
+2. **v8 was ahead of the repo.** Its `announcement-bar.liquid` had a
+   `tabindex="-1"` accessibility fix and a `list` icon option that `theme/`
+   never received. Writing the repo's copy over it would have reverted both
+   without a word — `themeFilesUpsert` reports success either way. The fix
+   was rebuilt on top of v8's content instead, and the repo now matches v8
+   plus the guard. See the warning at the top of §5.
+
+v6 did receive the earlier version of that file. It is superseded and slated
+for deletion along with v5 and v7, so it was not synced back.
+
+## 23. Round 15 — the site assistant has never been live
+
+The owner asked what state the assistant is in **on the website**, as opposed
+to in the app. The answer is that it has never rendered, for two independent
+reasons, and both had to be found before either was visible.
+
+**1. The server URL was never configured.** `layout/theme.liquid` gates the
+widget on `settings.assistant_enabled and settings.assistant_url != blank`.
+`config/settings_schema.json` declares both under "העוזר החכם (AI)":
+`assistant_enabled` defaults to `true`, `assistant_url` has **no default**.
+Neither key existed in `config/settings_data.json` — not on v8, not in the
+repo — so enabled resolved true and the URL resolved blank, and the guard was
+always false. Fixed on v8: `assistant_url` is now
+`https://anshilo-assistant.expo.app`.
+
+**2. v8's layout does not render it at all.** That is the real blocker, and it
+is the divergence in §5. v8's `layout/theme.liquid` is 5KB *larger* than the
+repo's because it carries the `/policies/*` handling, but it does **not**
+contain the `{% render 'ai-assistant' %}` line that the repo's copy has. The
+snippet is deployed to v8 (`snippets/ai-assistant.liquid`, 33,014 bytes,
+byte-matching the repo once CRLF is discounted) and nothing calls it.
+
+Verified with Playwright against v8: `.shilo-ai__launcher` absent before and
+after the settings fix. **Do not "fix" this by pushing the repo's
+`theme.liquid` over v8's** — that reverts the policy-page work. The two files
+have to be merged by hand, once, and the result written to both.
+
+While checking, two adjacent facts worth recording:
+
+- **The accessibility widget IS live** and has a statement link
+  (`a11y_enabled` defaults true, so absence from `settings_data.json` is
+  harmless). The paid `sense-rtl` app block is present but `"disabled": true`,
+  which is correct — the in-theme widget replaced it.
+- **Store hours disagree between site and app.** The theme says
+  `ו' 07:00-14:00`; `mobile-app/src/config.ts` and the theme's own schema
+  default say `ו' 07:00-13:00`. One of them is wrong on a customer-facing
+  detail; only the owner can say which.
+
+## 24. Round 16 — submission-ready, and the site assistant is live
+
+### The app
+
+Both native config changes went in as one batch and both platforms were
+rebuilt. **Verified in the shipped binaries, not in the config:**
+
+| | iOS build 12 | Android versionCode 3 |
+|---|---|---|
+| runtime | `af3cfcb6` | `1e3cc308` |
+| artifact | `.ipa` | `.aab` |
+| checked | `Info.plist`: `UIDeviceFamily [1]` — **iPhone only**, `CFBundleIdentifier com.anshilo.shop.test`, `ITSAppUsesNonExemptEncryption false`, `CFBundleLocalizations ["he"]` | manifest: **no `SYSTEM_ALERT_WINDOW`**, nine legitimate permissions intact |
+
+`UIDeviceFamily [1]` is what actually removes the iPad review risk —
+`supportsTablet: false` in app.json is only the request.
+
+One false alarm worth recording: a raw string scan of the AAB manifest turns
+up `android.permission.DUMP`. It is **not** requested. The attribute is
+`android:permission` on AndroidX's `ProfileInstallReceiver` — that receiver
+is protected so only a DUMP holder can trigger it. Check the attribute name
+before believing a permission scan.
+
+Two Shopify pages were created, which closed two separate things at once:
+
+- `account-deletion` — Google Play requires a URL where a user can request
+  deletion **without installing the app**; the in-app screen never satisfied
+  that.
+- `quick-order` — the page the announcement bar had always pointed at. **The
+  §22 guard then restored the link by itself**, with no theme change, which
+  is the cheapest possible confirmation the guard was right.
+
+### The site assistant — live for the first time
+
+The `layout/theme.liquid` divergence in §5 is resolved. The merged file is
+v8's content (policy block, `doc_title` cart fix, tile-bg fallback) **plus**
+the repo's assistant render — 20,591 bytes, and `themeFilesUpsert` returned
+exactly 20,591, so the write was byte-faithful. The local diff against the
+repo's old copy removed only four lines, all of them v8 being newer.
+
+Verified on v8: `.shilo-ai__launcher` present on the home page **and** on a
+policy page, while the policy block still renders its wrapper, Hebrew
+heading, breadcrumbs and legal-nav. Both sides of the merge survived.
+
+Full audit after the merge: 22 pages, all 200 except the deliberate 404
+probe. `quick-order` now returns 200 where it used to 404.
+
+### What is left, and it is not code
+
+Apple: iPhone screenshots (build 12 installs on the owner's phone; iPad is
+no longer required), the App Privacy questionnaire — answers are written out
+in `docs/SUBMISSION.md` §4א — store text, then `eas submit`.
+
+Google: create the Play record, a service account for `eas submit` (or
+upload the AAB by hand), Data Safety, content rating. Store assets are ready
+in `docs/store-assets/`.
+
+Still unverified anywhere: **pinch-zoom and multi-image paging on a real
+device.** `adb` cannot inject a second finger, so those rest on the fuzz and
+on construction. Check them on build 12 before submitting.
+
+### Round 16 addendum — pinch is device-verified, and build 12 is on TestFlight
+
+**The owner confirmed pinch-zoom works on a physical iPhone.** That closes the
+last item the zoom rewrite could not prove from here: `adb` cannot inject a
+second finger, so pinch and multi-image paging rested on the 288,000-state
+fuzz and on construction. They now rest on a device. Nothing in
+`ImageZoomModal.tsx` is unverified any more.
+
+Note which build proved it: **build 11**, over the air. It had received the
+zoom fix, the legal links and the gallery fix before the fingerprint moved.
+Build 11 keeps working with the last update it got; it simply will not
+receive new ones.
+
+**Build 12 was uploaded to App Store Connect** (submission `fa29b60a`). It
+worked non-interactively because an App Store Connect API key (`8RF5KF62GY`)
+is stored on EAS servers — so `eas submit --platform ios --non-interactive`
+needs no Apple password from the operator. Worth knowing: that is an
+**upload**, not a submission for review. After Apple's 5–10 minute
+processing the build appears in TestFlight, and the **internal** group
+installs with no review. The external group `Shilo` does require review,
+which is why §12 saw "No Builds Available" there.
+
+A production-profile build is `distribution: STORE` and never installs
+itself on a phone. To put a build on a device: upload it and use TestFlight,
+or build the `preview` profile, which is internal distribution and installs
+directly.
+
+`docs/PROMPTS-FOR-BROWSER-AGENT.md` now carries three ready prompts for the
+work that needs a logged-in browser and therefore cannot happen from here:
+the Play Console listing with every Data Safety answer spelled out, the
+Google Cloud service account for `eas submit`, and the Shopify Admin API
+token for the whitener. All three warn against pasting the secret back into
+a chat.
+
+## 25. Round 17 — the whitener ran for real, on Hagit's 32
+
+First `--apply` this tool has ever done. Scoped to vendor חגית, the case it
+was written for.
+
+| | |
+|---|---|
+| whitened | **32** |
+| already white, skipped | 72 |
+| rejected, non-uniform background | 4 |
+| upload errors | 0 |
+
+The four rejections include `סולם עץ רב מקצועי 105606` — the
+specification-table image that the post-whitening border check was added to
+catch. It did its job in production.
+
+**Verified against the store, not the report.** Six of the whitened ladders
+were re-fetched through the Storefront API and their border tone measured:
+`255,255,255` on all six. The navy is gone from the live storefront and from
+the app.
+
+### Two properties of this change worth knowing
+
+**Nothing was deleted.** `productCreateMedia` adds the whitened image and
+`productReorderMedia` moves it to position 0, so the original navy shot is
+still attached to every one of the 32, demoted. Undoing this is a reorder,
+not a restore.
+
+**The gaps between the rungs came out white**, which is the entire reason
+the fill is global rather than a flood from the border. A flood never
+reaches a gap that the frame encloses and would have left a blue rectangle
+in each one. §17 predicted this; production confirms it.
+
+### Honest caveat on quality
+
+Where pale aluminium met dark navy the edge softening thins the metal
+slightly — visible around the feet at the bottom of the frame. At catalogue
+size it reads clean, and it is a fair trade against a blue halo, but it is
+real and someone should decide it is acceptable rather than discover it.
+
+### The credential route, now proven end to end
+
+`SHOPIFY_CLIENT_ID` + `SHOPIFY_CLIENT_SECRET` in `mobile-app/.env`, and the
+script mints a 24-hour token per run. Confirmed what the store actually
+granted rather than what was configured:
+
+```
+app           : Shilo Image Tools
+actual scopes : read_files, read_products, write_files, write_products
+```
+
+Shopify implies the matching `read_*` for every `write_*`. **No customer, no
+order, no Storefront scope** — the separation from §23 holds in fact and not
+just in intent.
+
+Untouched and waiting on the owner's eye: the other 18 coloured backgrounds
+(Kärcher, BLUNDSTONE, BONA) and the 9 shadow-only images.
+
+## 26. Round 18 — supplier imports, and the Merchant Center cleanup
+
+This round did two separate jobs: importing supplier catalogues as drafts, and
+fixing what Google was rejecting. Read §26.4 before touching prices — it lists
+approaches that were **measured and failed**, and repeating them costs hours.
+
+### 26.1 Where the store stands, measured
+
+Admin API, all statuses:
+
+```
+2,714 products    1,867 published    844 drafts
+
+Published only — this is all Google sees:
+  no SEO title        0        (was 2,714)
+  no category         0        (was 514 store-wide)
+  blocked category    0        (was 36)
+  no image           11        (Google reported 29)
+  price 0            98        (Google reported 131)
+  description <80   418        (Google flagged 43)
+  promotional overlay 0        (was 1 — fixed, see §26.9)
+```
+
+Four of the six Merchant Center items are closed. What remains is **98 prices,
+11 images and 418 descriptions**, and each is blocked on a source rather than on
+work: the prices need a retailer that stocks the product (§26.4), the images need
+a supplier that has one (only 1 of 11 does), and the descriptions need one more
+Fetaya crawl (§26.5 step 4) which is currently blocked — see §26.9.
+
+Nothing was published. 1,867 active is the same number as before this round
+started — every import landed as DRAFT and stayed there.
+
+### 26.2 What was imported, as drafts
+
+| vendor | new drafts | collection | note |
+|---|---|---|---|
+| פתיה | 492 | פתיה | catalogue crawled, 904 of 910 |
+| יעקבי | 250 | ניקיון ותחזוקת הבית | 243 this round plus 7 pre-existing |
+| Blundstone | 61 | ביגוד והנעלה | 516 variants with sizes |
+| מקיטה / מילווקי | 39 | — | pre-existing drafts, categorised |
+
+Dedup is by SKU where both sides have one, and it earned its keep: the Jacobi
+matcher marked 470 as new and the importer's SKU pre-check stopped **227** of
+them, because those products were already in the store as drafts or under a
+different vendor. The Storefront API does not see drafts, which is why the
+matcher missed them — **`match-supplier-catalogue.js` still reads through
+Storefront and should be moved to Admin.** That is the one known unfixed defect
+in the import path.
+
+### 26.3 Taxonomy, SEO and titles — done
+
+`scripts/fix-product-taxonomy.js --vendor "X" [--only-wrong] [--seo-only] [--apply]`
+
+Rules are grouped by domain and chosen by vendor, and the choice **fails
+closed** — a vendor with no domain does not run at all. That guard exists because
+dry-running the cleaning rules against Fetaya would have marked 279 lighting
+products as Paint: a doorbell described as "בצבע לבן" carries the same word as
+paint.
+
+Domains: cleaning (יעקבי, בונה), lighting and electrical (פתיה, ניסקו), footwear
+(Blundstone), power tools (מקיטה, מילווקי, בוש, סטנלי, דיוולט, האנטר, קרשר),
+ladders (חגית), security (ייל), plumbing (אקווילה, גרו, א.נ. שילו), cooling
+(פרוקסן), garden (אמריקן איגל).
+
+Category was the main Google blocker and the errors were not cosmetic: bleach
+under Beverages then Milk, toilet tablets under Edible Baking Decorations,
+charcoal lighter fluid — a flammable liquid — under Cooking and Baking
+Ingredients. 36 of 223 Jacobi products were wrong. A cleaning chemical published
+to a shopping feed as a drink risks the merchant account.
+
+Three lessons that will recur if you write more rules:
+
+- **Check the distribution before applying.** Every batch of new rules produced
+  a systematic error on its first run, and every one was caught this way.
+- **The product resolves before its accessories.** "מברגה / מקדחה HP333DWYE עם
+  מטען וסוללות" is a drill; 30 products landed as chargers and 10 as batteries
+  until the accessory rules were moved last. Same shape as an emergency exit
+  light filed under Wires and Cable because its name mentions its cable.
+- **Hebrew construct forms change the final letter.** A list built from נורה
+  misses נורת, which dropped 83 bulbs; one built from סוללה misses סוללת. And
+  מולטיטול is written as one word.
+
+Titles: 124 corrected. Automated typo detection was tried — word frequency plus
+edit distance 1 — and produced 131 candidates of which most were ordinary Hebrew
+(גרם against זרם, מלח against מתח, ברזל against ברז). Without a dictionary one
+edit is not evidence, so `scripts/fix-product-titles.js` holds an explicit list,
+each entry read against its product. It did surface one systematic fault:
+**מתחזרם on 72 products**, which is מתח זרם run into a meaningless word. That
+matters because the classifier reads titles — the same way מיסגרת הרכבים turned
+an electrical faceplate into a vehicle part.
+
+### 26.4 Prices — 102 open, and what does NOT work
+
+**Do not retry these. Each was measured.**
+
+1. **SKU against Fetaya's own catalogue** — 10 of 112. Held at 10 after fixing
+   the crawler's SKU extraction (31% to 100% coverage; the site uses a second
+   template, `code_item`, alongside `cataloge_number`) and after fetching the 120
+   pages the site had rate-limited away. The SKU ranges line up; the numbers are
+   simply different products.
+2. **Fetaya site search by SKU** — answers "חיפשת 9169, תוצאות: 0".
+3. **A store sibling differing only in colour** — 0 of 116.
+4. **Name similarity** — failed three ways. `שקע TV-FM ANAIS` matched
+   `קופסה 55 עגולה` at 2 shekels; `לחצן מדרגות לא מואר SHOVAL` matched
+   `לחצן מדרגות מואר ANAIS`. Requiring every number to match does not help,
+   because the discriminator is a **word** — the series name, מואר against
+   לא מואר, דו-פיני against כח. Left in `fill-gaps-from-catalogues.js` behind
+   `--by-name` with a warning, and it should stay off.
+
+   **Correction to the evidence cited for this.** Earlier rounds used
+   "שבילית 4.4W matched שבילית 44W, a factor of ten in wattage" as proof that
+   similarity conflates different products. Those are the **same product**, and
+   it is Fetaya's notation that drops the decimal point — their own catalogue
+   lists a memorial candle as "הספק 05W", which can only mean 0.5W. All 19
+   store products with a decimal wattage have a no-decimal twin at the supplier,
+   and Chen appears to have copied Fetaya's data. **The store's numbers are
+   correct; the supplier's are not.** The conclusion about name matching still
+   holds — the TV-FM and מואר cases are unrelated to this and are real — but do
+   not treat a wattage mismatch against a Fetaya name as proof of a different
+   product. Four שבילית prices were resolved through it, by stripping the
+   trailing zero the store SKU adds (90680 → 9068) **and requiring the series
+   token to match**. Without that guard the same rule paired DISC 92550 with a
+   שבילית and 92640 with a MICHAELLA, because DISC tails 40 and 50 legitimately
+   end in zero.
+5. **Enumerating fetaya.com past its sitemap** — the sitemap gives 910 and the
+   site declares 1,068. `?items=all`, `?page=N` on both search and category
+   pages, bare item IDs, and hunting the lazy-load endpoint all failed. A valid
+   ID with a wrong slug 302s to the product's category, which proves the ID is
+   real and gives nothing else. Six exact item URLs from Google's index now
+   return no product — that index is stale.
+6. **toolsonline.co.il by SKU for Makita** — 71% on a 24-item sample, then 2% on
+   the full 3,783 (1,817 HTTP 202). Rate limiting. Also **not needed**: no Makita
+   product is among the unpriced ones.
+
+**What does work.** `netaneltools.co.il` answers a bare ID with any slug, serves
+JSON-LD, and carries the catalogue number next to the price. An earlier probe of
+that same site failed only because it used the fully-encoded URL from a search
+result. All four Fetaya resellers found run the same Konimbo platform, so
+`fetch-fetaya-catalogue.js --domain X --out Y` covers them:
+
+```
+chen-electric.co.il    1,936 / 1,978   done
+netaneltools.co.il     1,228 / 1,487   done, 362 with SKU
+aspaka.co.il           2,943 total     crawl was mid-flight — CHECK THE FILE
+nisanihashmal.co.il    8,010 total     crawl was mid-flight — CHECK THE FILE
+```
+
+**Before re-crawling those two, check whether `aspaka-catalogue.json` and
+`nisani-catalogue.json` exist in `mobile-app/`.** Both crawls were still running
+when this was written — aspaka at 1,675 of 2,943 and nisani at 1,625 of 8,010 —
+and the fetcher only writes its output file when it finishes. So either the file
+is there and complete, or it is absent and the whole crawl is lost. There is no
+partial state. If a file is present, run with `--only-missing` to top it up
+rather than starting over.
+
+**The DISC series is solved structurally** and is 47 of the 116. Its SKUs decode
+completely: bands 924, 925 and 926 are cool, warm and natural light, and the last
+two digits are the product — 40 to 44 square recessed by wattage, 46 to 48 square
+surface, 50 to 54 round recessed, 55 to 58 round surface. Seventeen products,
+three tones each. Colour tone does not move the price, and that is measured
+rather than assumed: the Fetaya catalogue lists the same fixture in three tones
+at 40.87, and square 170 12W in two tones at 54.5. **So one verified price covers
+three store products.** 11 priced from five points. The twelve missing tails are
+40, 41, 42, 43, 44, 47, 48, 50, 51, 56, 57 and 58. One guard: 92417 in the same
+band is a light bulb, so the band prefix alone means nothing.
+
+14 of 116 priced so far — 3 by exact match, 11 DISC.
+
+### 26.5 Next steps, in order
+
+1. Restart the two dead crawls:
+   `node scripts/fetch-fetaya-catalogue.js --domain www.aspaka.co.il --out aspaka`
+   and the same for `www.nisanihashmal.co.il --out nisani`. They are slow on
+   purpose (concurrency 2) — raising it is exactly what got the Makita run
+   blocked at 2%.
+2. Re-run the exact matching in `scratchpad/zero-list.js` against the new
+   catalogues, then `node scripts/apply-price-list.js <list>.json --apply`.
+3. For DISC, find the twelve missing tails and apply — each one closes three
+   products.
+4. Descriptions: the crawler now captures them (JSON-LD, falling back to the page
+   meta description), but every catalogue on disk was crawled before that change,
+   so Fetaya needs one more full crawl to fill 249 of the 418.
+5. Move `match-supplier-catalogue.js` from Storefront to Admin, per §26.2.
+6. Still untouched from the Merchant Center report: the single product rejected
+   for "Promotional overlay on image" — שרשרת תאורה גרילנדה 10 מטר.
+
+### 26.6 Where the data is, and how to regenerate it
+
+`.gitignore` line 43 excludes `mobile-app/*-catalogue.json`, so roughly 6.7 MB of
+crawl output lives **on disk only**, at `C:\Users\dvirs\anshilo.com\mobile-app\`:
+fetaya, chen, netanel, jacobi, blundstone, argentools, nisko. That is hours of
+deliberately slow crawling. If the files are missing, every fetch command is in
+§26.4. The smaller derived files are committed: `zero-open.json`,
+`disc-prices.json`, `store-categories.json`, `thin-descriptions.json`,
+`import-ledger.json`.
+
+`import-ledger.json` is what makes the importer resumable. Do not delete it, or
+the next run re-creates all 796 products.
+
+### 26.7 Waiting on the user
+
+- **The assistant production promote is blocked and pending approval.** The
+  improved version is verified on a preview deployment,
+  `https://anshilo-assistant--saa42ryz10.expo.app/chat`. `eas deploy --prod` was
+  refused by the permission layer. Measured before and after on the same
+  questions: "צריך מקדחה" went from 0 products to 3, ladders from 1,098
+  characters to 452, and a customer who states what they need gets one product in
+  136 characters with no questions at all. The first message of a conversation
+  now forces `search_catalog` through `tool_choice`, because wording alone lost to
+  the clarifying-question rule that sat in the same paragraph.
+- **R8 is off** and worth enabling, but it needs `expo-build-properties`, a build
+  and a smoke test before any submission — it can strip reflection-loaded classes
+  and fail at runtime rather than at build. Left off deliberately.
+- The other two Play warnings are not app-side: the deprecated status-bar and
+  cutout calls live inside React Native and Material Components, and this app
+  never passes `backgroundColor` to StatusBar. Grids are now responsive
+  (`gridColumns` and `gridItemWidth` in `src/theme.ts`) because Android 16 ignores
+  the portrait lock on large screens regardless of what we ask for.
+- **844 drafts are waiting for review** before publishing. Nothing about them is
+  urgent; they are invisible to customers and to Google.
+
+### 26.8 Store hygiene noticed, not touched
+
+Deleting collections is irreversible and was not requested:
+
+- `יעקבי (Copy)` — 173 products in a leftover duplicated collection.
+- `הנמכרים ביותר` and `המוצרים החדשים ביותר` contain the **entire catalogue** —
+  all 625 Fetaya and all 223 Jacobi products sit in both, so "best sellers"
+  carries no information. There is also a separate `הנמכרים ביותר של מקיטה`.
+- The catalogue has **no exterior wall paint at all**: `צבע חוץ` returns zero
+  results. Customers ask for it, and the assistant now says plainly that there
+  is none.
+
+### 26.9 Two things that happened late, and both matter
+
+**Fetaya has started blocking.** A re-crawl to pick up descriptions returned
+"1 sitemap, 0 product URLs" after a day of requests against the site. That is
+what blocking looks like there — not an error code, an empty catalogue. Wait
+before retrying, and expect the same from the other three resellers if they are
+hit as hard.
+
+**The crawler destroyed a good file, and now cannot.** It wrote that empty result
+over 904 products and reported success. A backup taken a minute earlier is the
+only reason the data still exists. `fetch-fetaya-catalogue.js` now refuses to
+write when it fetched zero products, and refuses to write anything under half the
+existing count, which is what partial blocking produces. **Take a copy before any
+re-crawl anyway** — the guard covers the case that was seen, not every case.
+
+**The promotional-overlay rejection is fixed.** The 10-metre garlanda image had a
+FETAYA LIGHTING banner, bulb graphics and IP44 / 2-YEARS badges composited across
+the top. `scripts/replace-product-image.js <productId> <file> --apply` uploads,
+waits for the media to reach READY, and only then deletes the old one — the
+reverse order leaves a product with no image if the upload fails, which is a
+different Google rejection rather than a fix.
+
+Detecting the banner height automatically failed: horizontal variance cut at 57
+of 500 pixels because the decorative bulbs inside the banner have variance while
+the badges sit lower. For a single product a crop checked by eye is the right
+tool, so it is 158 pixels, and the output was looked at rather than assumed.
+
+The two sibling garlanda products were checked and deliberately left alone. Their
+images are photographs of the retail packaging, with the logo and badges printed
+on the box rather than composited onto the photo, and Google flagged neither.
+
+### 26.10 The whole Konimbo platform is now rate-limiting this IP
+
+Every supplier site in this work runs on Konimbo — Fetaya, Chen, Netanel,
+Aspaka, Nisani, Argentools, Nisko, ToolsOnline. After a day of crawling they all
+began returning **HTTP 200 with a body of about 1,622 bytes**, no JSON-LD and no
+meta description. It is not per-site: Chen, Argentools and Fetaya were tested
+within a minute of each other and all three returned it. The block is at the
+platform, so it lifts for all of them together.
+
+This is the worst possible failure shape, because `res.ok` is true. Before the
+guard, a blocked page counted as "no Product in JSON-LD" — as though the supplier
+did not carry the product. Both `fetch-fetaya-catalogue.js` and
+`fill-descriptions.js` now recognise the signature and report it as a block.
+
+**Everything still open is blocked on this, not on effort:**
+
+| item | published | why it is stuck |
+|---|---|---|
+| price 0 | 98 | needs a reseller page; §26.4 |
+| no image | 11 | only 1 of the 11 exists at any supplier |
+| description | 196 | needs one supplier page each — the script is written and works |
+
+### 26.11 Descriptions — the real number is 196, not 418
+
+Measured the 418 rather than trusting the threshold, and most are not a problem:
+
+```
+  48   empty
+  28   1-24 chars    the description is the title, verbatim
+ 120   25-49 chars   same
+ 222   50-79 chars   real spec text, just short — LEAVE THESE ALONE
+```
+
+"מתח עבודה 2X18V כושר חיתוך 650 מ״מ מהירות 2000-3600 תל״ד" is a genuine
+description at 58 characters. So the target is the 48 empty plus the 148 whose
+description is a copy of their own title, which Google treats as no description
+at all.
+
+`scripts/fill-descriptions.js` handles them: store product → SKU → supplier URL
+from the already-crawled catalogues → fetch that one page → JSON-LD description,
+falling back to meta description. One page per product rather than a whole
+re-crawl, which is what makes it viable at all now.
+
+75 of the 196 have a supplier URL on disk. **It deliberately never writes an
+invented description** — a description built from the title is the same
+duplication the script exists to remove, so a product with no supplier text is
+reported and left.
+
+Run it when the block clears. It needs no arguments to dry-run.
+
+### 26.12 Round 18, second Merchant Center report — final state
+
+Twelve issues in total across two reports. Eight are closed.
+
+```
+                              before   after
+SEO title missing              2,714  →    0  ✓
+category missing                 514  →    0  ✓
+category Google blocks            36  →    0  ✓
+product type empty             1,862  →    0  ✓
+promotional overlay on image       1  →    0  ✓
+purchasable at 0 shekels           2  →    0  ✓
+small primary, larger in gallery  36  →    0  ✓
+tool sets missing tool count      19  →    0  ✓
+duplicate products               161  →   20
+primary image under 500px        455  →  336
+description under 30 chars        89  →   87
+price 0                          102  →   95
+```
+
+**The 161 "duplicates" were two opposite problems.** SKUs separate them: 38 groups
+share a SKU and are one product listed twice, mostly Hagit ladders. 9 groups carry
+distinct SKUs — different products with an identical title, **which is also why
+the six conflicting prices are legitimate rather than a bug.** "path light 4.4W"
+appears three times under 9250, 9251 and 9252 at 140, 140 and 130; the Fetaya SKU
+tail encodes the product, so those are three models. 74 drafted, 9 collisions left
+for retitling, which is a content decision.
+
+That nearly went wrong. Grouping by title and asking "are all SKUs unique" fails
+on the Hunter set, whose SKUs are 100313-026, -027 and -026: not all unique, so it
+fell into the dedupe branch and would have drafted the -027, a different model.
+**Group by SKU, not by title** — same SKU is the same product, different SKU is a
+different product, and one rule covers every case.
+
+**Power Tool Sets: measuring it prevented writing something false.** Battery
+voltage is already present in every description whose title states it — that gap
+is zero. Tool count was missing from 19, and those are exactly the titles that
+state it outright. The other 25 were left alone: ten list their tools by name, and
+counting the list gives wrong answers. "impact + drill/driver + two batteries"
+counts as three when two batteries are not a tool, and "drill / driver" is one
+combi tool written with a slash. A confident wrong number in a description is
+worse than a missing one.
+
+**Images.** Three separate levers, and only one of them was upscaling — which was
+rejected, because a blurred image satisfies nothing and looks worse. The supplier
+platform serves each photo at several sizes and the catalogues stored `/large/`;
+`/original/` is genuinely bigger (500x415 → 848x1000, 400x400 → 800x800), and 52
+products crossed 500 that way. 31 more already had a large image sitting further
+down the gallery and only needed reordering. The remaining 336 have no larger
+source anywhere — Hagit is the biggest group at 105 products with no catalogue at
+all — and `upgrade-small-images.js` reports that rather than padding the number.
+
+**product type** was empty on 1,786 while all 1,791 already carried a taxonomy
+category, so it is derived from it. Zero guessing, and left in English because
+Shopify's taxonomy is English and translating it would be invention.
+
+**Two products were purchasable at 0 shekels** with 99 in stock, an 80-litre
+vacuum among them. Verified the other 96 are unsellable only because they are out
+of stock. Both drafted, reversible the moment a price exists.
+
+### 26.13 What is left, and why
+
+| item | count | blocked on |
+|---|---|---|
+| price 0 | 95 | Konimbo platform block — §26.10 |
+| description under 30 | 87 | same |
+| no image | 11 | only 1 of them exists at any supplier |
+| primary under 500px | 336 | no larger source exists |
+| duplicate titles | 20 (9 groups) | needs retitling, a content decision |
+
+And four items need scopes this token does not have — it carries `write_products`
+and `write_files` only. Ready-to-paste content for all of them is in
+`docs/MERCHANT-CENTER-TODO.md`:
+
+- three missing clauses in the refund policy (the rest of it is already compliant)
+- a cancellation-notice link on the homepage
+- the restocking fee: Shopify has no cap field, so 5% overcharges above 2,000
+  shekels while the written policy correctly says "whichever is lower"
+- the Google Customer Reviews pixel, via Customer events since Checkout
+  Extensibility removed Additional scripts
+
+### 26.14 The theme in this repo has never been deployed — measured
+
+§5 says "Deployed theme vs repo — there IS a delta". The delta is not partial. It
+is everything.
+
+Measured two ways. The live site serves CDN sequence `t/30`, and its four largest
+assets are 9,518 / 14,924 / 37,755 / 21,091 bytes against the repo's 25,923 /
+25,389 / 50,452 / 34,483. Then every asset directory on the shop's CDN, `t/1`
+through `t/40`, was swept: `base.css` appears as 65,755 at t/1, 65,967 at t/5, t/6
+and t/8, then 35,448 / 37,050 / 37,080 / 37,378 / 37,755 / 37,755 across t/22 to
+t/31. **It is never 50,452 anywhere.** No theme on this store carries the
+repository's files.
+
+`base.css` last changed in the repo on 2026-07-31, in the assistant commit. So this
+is not stale-by-a-day; a body of theme work has been committed and never shipped.
+
+**Do not conclude the pushes went to the wrong theme.** That was the obvious
+hypothesis and it is wrong — t/27 is draft 148375371855 and it does not match
+either.
+
+### 26.15 Theme facts, corrected
+
+| | |
+|---|---|
+| published / live | **`shilov8theme`, id 148378648655**, CDN `t/30` |
+| 148375371855 | an **unpublished draft** named `שילו 2026 — העיצוב החדש v5 ⭐`, CDN `t/27` |
+| also present | drafts named v6 and v7, `Copy of shilov8theme` (t/31, byte-identical to live), `שמירה 1` |
+| theme count | **at the 20-theme ceiling** |
+
+§3 names 148375371855 as the deploy target. **That id is a draft, and not even the
+newest one** — v6 and v7 drafts both post-date the v5 it points at. Use
+148378648655.
+
+The 20-theme ceiling matters more than it looks: **any deploy route that creates a
+theme will fail.** That rules out the zip-import procedure in §3, which does
+exactly that. `shopify theme push --theme 148378648655` writes into the existing
+theme and is unaffected.
+
+### 26.16 How to deploy, given all of the above
+
+`themeFilesUpsert` is not available: it answers "requires write_themes **and an
+exemption from Shopify** to modify theme files", so even widening the app's scopes
+would not be enough. The app the API token belongs to is `Shilo Image Tools`
+(`write_files, write_products, read_files, read_products`).
+
+The route that works is Shopify's own **Theme Access** app, which issues a password
+scoped to theme files only — no product, order or customer access, and it changes
+no existing app's permissions. Install at `apps.shopify.com/theme-access`, add a
+password, and Shopify emails it to the store owner. Then:
+
+```
+SHOPIFY_CLI_THEME_TOKEN=shptka_...   in mobile-app/.env, or as a GitHub secret
+shopify theme push --path theme --theme 148378648655 --allow-live --nodelete
+```
+
+`.github/workflows/deploy.yml` does this on every push once the secret is set;
+see `docs/AUTO-DEPLOY.md`.
+
+**Do not push straight to live the first time.** Since none of this has ever been
+deployed, the first push is not a slider — it is months of theme work landing at
+once on a live storefront. Delete two or three of the ~20 drafts to get under the
+ceiling, push to a fresh unpublished theme, preview it, and publish only after
+looking at it. `shopify theme check --fail-level error` catches broken Liquid but
+not a layout that renders wrong.
+
+### 26.17 STOP — the owner says `theme/` in this repo is OLD. Direction is PULL, not push.
+
+Everything earlier in this file that treats `theme/` as the source of truth —
+§3 explicitly says "The repo is the source of truth" — is **wrong by the owner's
+own statement**: the repo theme is an old, outdated design. §26.14 measured that
+it was never deployed and read that as undelivered work; the correct reading is
+that it was **abandoned** work.
+
+What happened in round 18, in order:
+
+1. A Theme Access password was created (name `claude-code-deploy`), stored in
+   `mobile-app/.env` as `SHOPIFY_CLI_THEME_TOKEN`. It works.
+2. The repo theme was pushed to **`Copy of shilov8theme` (148566474831)** — an
+   unpublished staging copy. **The live store was never touched**, verified
+   before and after: live serves `t/30`, no slider markup in it.
+3. The owner said the repo theme is old and must not go live.
+4. The copy was **restored to byte-match the live theme** from a local pull, and
+   the restore was verified (no slider markup in its preview). Nothing is left
+   that could be published by accident.
+
+**What survives and is still valuable:**
+
+- A local pull of the live theme exists (session scratchpad `live-theme/`) and
+  seven live-only files plus eight locale keys were merged INTO the repo, so the
+  repo is closer to live than before — but its shared files are still the old
+  design and must not be pushed.
+- The price-slider work (facets.liquid handles, facets.js drag logic,
+  section-collection.css styling) is committed in the repo and is written as a
+  **self-contained additive layer**. To ship it, apply those additions to a pull
+  of the LIVE theme's files, not to the repo's versions.
+- The footer cancellation-notice link and locale labels — same: re-apply onto the
+  live theme's footer.liquid, which may differ from the repo's.
+- The Theme Access password and the CI pipeline are both fine; the pipeline's
+  theme job must be pointed at a repo directory that mirrors the LIVE theme
+  before it is ever enabled.
+
+**Next step for the theme (do this before any other theme work):** pull the live
+theme into `theme/` (replacing the old design), commit that as the new baseline,
+then re-apply the slider and footer additions on top. That makes the repo the
+source of truth in fact rather than by assertion.
+
+### 26.18 The repo theme is now the LIVE theme plus the slider. Baseline replaced.
+
+The owner settled it: **the live design is the one he wants and it stays.** The
+only thing it was missing is the draggable price slider. So §26.17's "next step"
+is done, and the direction it describes is now the actual state of the repo.
+
+`theme/` was replaced wholesale with a fresh pull of live `shilov8theme`
+(148378648655), and the slider was re-applied on top as three additions:
+
+| file | how |
+|---|---|
+| `snippets/facets.liquid` | live and repo were **byte-identical** (17,281 both), so the repo's version already was live + handles — copied straight over |
+| `assets/facets.js` | live differed; only the slider block was extracted by line and appended to live's version |
+| `assets/section-collection.css` | same treatment |
+
+`theme/DESIGN-SYSTEM.md`, `theme/SPEC.md` and `theme/tools/` are ours, not
+Shopify's — restored after the wholesale replace, which had staged them as
+deletions. The old repo design is not lost; it is in history at `2a3a980`.
+
+Verified on `Copy of shilov8theme` (148566474831) by normalising the rendered
+collection page of both — section-id prefixes, asset folder, cache-buster, request
+ids — and diffing tag by tag. **The only markup difference is the slider wrapper
+and its two handles around the existing track**, plus Shopify's own preview-bar
+and hot-reload scripts. The served, minified `facets.js` was checked for the drag
+logic itself: pointer capture, RTL inversion, the ENGAGE_PX scroll-vs-drag
+threshold, `Math.abs(at-minNow)<=Math.abs(at-maxNow)` for tap-on-track, and
+`?"":String(Math.round(value))` for boundary-writes-empty.
+
+One error-level offence remains in `theme check`: `nav-thumb.liquid` has no width
+and height. It comes from the live theme, and the fix is kept in the repo copy.
+
+**The pipeline was a live hazard until this commit and the one that follows.**
+`deploy.yml` pushes `theme/` to the live theme with `--allow-live` on every push;
+with the old design sitting in `theme/`, setting the GitHub secrets would have
+overwritten the design the owner just said he wants to keep. Nothing had fired —
+the secrets are not set — but the trap was armed and documented as ready to use.
+`config/settings_data.json`, `templates/*.json` and `sections/*-group.json` are
+now `--ignore`d: those are what the theme editor writes, and `--nodelete` does not
+protect them because it prevents deletion, not overwrite.
+
+### 26.19 The gap numbers, measured in one pass — and several of the recorded ones were wrong
+
+`mobile-app/scripts/store-gap-report.js` reads the whole store and reports every gap
+at once. One pass rather than one script per gap, because `client_credentials`
+minting revokes the previous token and two scripts running at once kill each other
+with a mid-run 401 — that already destroyed a 355-product run here.
+
+It separates published from draft, because Merchant Center only sees published: a
+gap on a draft is not a feed error, and mixing them makes the report useless for
+the one question it exists to answer.
+
+**Store: 2,714 products — 1,791 published, 920 draft, 3 archived.**
+
+| gap | published | draft |
+|---|---|---|
+| price 0 | **95** | 1 |
+| no image at all | **11** | 10 |
+| primary image under 500px | **48** | 8 |
+| no useful description | **197** | 547 |
+| no category (what Google reads) | **0** | 242 |
+| no product type | **0** | 708 |
+| variant with no SKU | **372** | 585 |
+
+Two recorded numbers were wrong. Small primary images were recorded as **332**; the
+measured count of published products whose primary image is under 500px is **48**.
+Missing descriptions were recorded as **87**; measured, **46 are completely empty**
+and **151 more are under 50 characters or are just the title repeated**, so 197.
+`check-sku-collisions.js` separates those two, because empty needs a new source
+while short needs expanding — different work.
+
+The 11 no-image products are genuinely imageless: 0 have media without a
+`featuredMedia`, and 0 have a `featuredMedia` that is not an image, so nothing is
+hiding in a counting seam.
+
+Published gaps concentrate almost entirely in one vendor: **פתיה holds 85 of the 95
+zero prices, 6 of the 11 missing images and 82 of the descriptions** — which is why
+the Konimbo block gates most of what is left.
+
+### 26.20 SKU collisions across suppliers — checked for damage, none found in prices
+
+`fill-gaps-from-catalogues.js` fills price by SKU across every catalogue with
+highest-price-wins. Fetaya SKUs are bare numbers and Makita model numbers look
+identical, so the store legitimately holds SKU 6952 on both a Makita impact driver
+at ₪1,499 and a Fetaya switch at ₪15.50. If a zero-priced Makita product's model
+number collided with a Fetaya SKU, it would have been priced as a switch.
+
+Measured: **129 SKUs carry prices differing by more than 20% between two different
+suppliers' catalogues**; 80 of those SKUs exist in the store, and 54 have a store
+price matching exactly one supplier. **Every one of the 54 matched its own vendor's
+catalogue** — Fetaya products took Fetaya's price, which is both correct and what
+the owner asked for (the highest price published in Israel). No cross-vendor
+mispricing exists.
+
+The collisions are mostly the same product sold by several suppliers at different
+prices, not different products sharing an id.
+
+### 26.21 Do not use the `name` field in fetaya-catalogue.json for any decision
+
+Measured against the product URL slug, which carries the Hebrew name and is
+authoritative: **23 of 904 names (2.5%) disagree with their own URL**, and the
+captured text is breadcrumb or category wording rather than the product — SKU 3001's
+name is "פעמון זמזם פעמוני זמזם ביתיים" where the URL says a specific 130×70×48mm
+mechanical doorbell.
+
+**The word-overlap test that found those 23 misses the worse cases.** SKU 9300's
+captured name is "DARYA הספק 70" while its URL is "OREO 30W"; they share
+גוף/תאורה/לד/צמוד/תקרה/בצבע/לבן/מסדרת and so score as agreeing. This is the same
+trap as §26.4: the discriminator is a single word, so overlap cannot find it.
+
+Prices are unaffected. SKU, price and URL all come from the same page's JSON-LD, and
+spot-checks (9300, 9302, 9304 — store title, URL and price all agreed) confirm the
+price is keyed to the right product. Only `name` is contaminated. It is used by the
+retired `--by-name` matcher, which stays off.
+
+### 26.22 The Konimbo gate is not a rate-limiter. Corrected, with the page in hand.
+
+§26.10 called this a platform-wide rate-limit on the IP. The mechanism is different
+and now measured directly. Every Konimbo host returns **1,648 bytes** (it drifted
+from the recorded 1,622; the `>1400 && <1900` guard still catches it) of this:
+
+```html
+<html id="page_no_referer"><title>עבור לדף המבוקש</title>
+<a id='redirect_to_link' href="javascript:window.location.reload(true)">
+<script>
+  var current_key = stringToHash(window.location.href);
+  if (document.referrer.length == 0 && localStorage.getItem("checkedEmptyReferrer"+current_key) != "true") {
+    localStorage.setItem('checkedEmptyReferrer'+current_key, "true");
+    window.onload = goto_link;   // reload
+  } else { ...show the link... }
+</script>
+```
+
+`Server: konimbo`, so it comes from the origin app, not CloudFront.
+
+The name says "no referer", which reads like a header fix. **It is not.** Measured
+against a known-good product URL with a Chrome UA:
+
+| attempt | result |
+|---|---|
+| no Referer | 200, 1,648 bytes, no JSON-LD |
+| `Referer: https://www.fetaya.com/` | identical |
+| `Referer: https://www.google.com/` | identical |
+| `Referer:` the page itself | identical |
+| request 2 and 3 with a cookie jar | identical, **and zero cookies are ever set** |
+| `Cache-Control: no-cache` | identical |
+| `Accept-Language: he-IL` | identical |
+
+And it is not scoped to product pages. `/`, `/sitemap.xml`, `/items/<id>.json`,
+`/api/items/<id>`, `/items/<id>?format=json` and `/he/items/<id>` **all return the
+same gate** — the homepage included. This is an IP-level decision; the
+`page_no_referer` template is merely what a flagged client is served.
+
+So no header, cookie, path or retry gets through, and there is nothing left to try
+from this machine. The two routes that remain are a different IP, or the supplier's
+own price file — Fetaya is Dvir's supplier and can hand over a list. A browser agent
+on a normal connection also passes it trivially, since the gate is built to let real
+browsers through.
+
+### 26.23 Do not restart the Nisani crawl — it is still running
+
+§26.5 step 1 says to restart the two dead crawls. **PID 29336 is alive**:
+`node scripts/fetch-fetaya-catalogue.js --domain www.nisanihashmal.co.il --out nisani`,
+started 2026-08-03 15:58, 66 MB resident, and recorded at 2,925 of 8,010 — the 1,625
+figure in §26.4 is stale. Restarting would put a second crawl against a gating
+platform and race the first for the same output path.
+
+`nisani-catalogue.json` does not exist yet because the fetcher writes only on
+completion. At roughly 109 URLs an hour it needs about two more days, and on Aspaka's
+measured yield the result will be close to worthless for prices — but the fix is to
+leave it alone and look for the file when it exits, not to launch another.
+
+`aspaka-catalogue.json` is **not** the completed crawl §26.5 assumes: 80 entries of
+2,943, SKUs on 73, **prices on zero**. It was written during the block, so it
+harvested identifiers and no money. `--only-missing` on that file is the wrong advice.
+
+### 26.24 R8 is ON. §26.7 is stale, and four CI bugs were real.
+
+`app.json:64-72` enables `enableProguardInReleaseBuilds` and
+`enableShrinkResourcesInReleaseBuilds`; the plugin config validates. §26.7's "R8 is
+off … left off deliberately" is wrong and was written **after** the change. Two
+notes: `enableProguardInReleaseBuilds` now survives only through a deprecation shim
+and should become `enableMinifyInReleaseBuilds`, and no `extraProguardRules` and no
+recorded smoke test means the reflection-stripping risk §26.7 named is still open.
+
+Edge-to-edge needs nothing on our side — SDK 57 makes it mandatory, `app.json` sets
+no bar colours, and the deprecated `setStatusBarColor` calls Play flags come from
+`react-native` and `react-native-screens` inside `node_modules`. **Orientation is
+still locked**: `app.json:6` is `"orientation": "portrait"`, which the core prebuild
+plugin writes onto MainActivity for every form factor. There is no `android/` folder,
+so that one line is the whole configuration. Changing it to `"default"` also unlocks
+iPhone rotation, which is why it is a decision and not a fix.
+
+**The pipeline had four real bugs, and two of its five runs failed for the first.**
+
+1. `node-version: 20` cannot install `@shopify/cli`, which declares
+   `engines.node >= 22.12.0`. Both runs where the theme job actually executed died
+   there. Now 22.
+2. `--message "${{ github.event.head_commit.message }}"` interpolated the commit
+   message into the shell. The apostrophe in *"What's left"* closed a quote that was
+   never opened and the run died on `unexpected EOF`. **This is an injection hole,
+   not an inconvenience** — a commit message could run commands in CI. It now goes
+   through `env:` and only the first line is used.
+3. The fingerprint guard generated an **Android** fingerprint and compared it to the
+   channel's newest `runtimeVersion`, which may be **iOS**. Two numbers with no
+   reason to match, so the guard would have failed every time and blocked all
+   publishing rather than protecting one. It now compares per platform.
+4. The post-deploy smoke test asserted only a non-empty reply. Measured, the live
+   assistant answers *"לא הבנתי את הבקשה"* to "צריך מקדחה לבטון" on some runs — 98
+   characters, zero cards — and that **passed** the gate and was reported as healthy.
+   It now fails on zero product cards.
+
+**All four GitHub secrets are absent** (`gh` is authenticated with admin on
+`A-N-Shilo/anshilo.com`; the secrets list is empty), so nothing has ever deployed:
+the assistant and app jobs were skipped in all five runs.
+
+### 26.25 The assistant answers the same question correctly about one time in four
+
+Four identical POSTs of "צריך מקדחה לבטון" to the live endpoint: all 200, all
+non-empty — so the empty-reply fix from §26.8 holds, 4 of 4. But only **one** run
+returned real drills with cards. One replied "לא הבנתי את הבקשה" to a perfectly clear
+question, and two produced text naming products with **zero cards attached**, which
+means the `[[handle]]` contract silently failed.
+
+This is a different failure from the one that was fixed, it is worse for a customer
+than an empty reply, and the CI gate could not see it until the change above.
+
+### 26.26 One more note on quoting, learned the hard way twice in five minutes
+
+The CI injection above was fixed and then immediately reproduced locally: a
+`git commit -F -` heredoc containing the words *"What's left"* aborted the whole
+shell command with `unexpected EOF while looking for matching '`. Nothing was
+written and nothing was committed, which is the good failure mode, but the lesson is
+the same in both places. **Write long prose to a file and pass the path.** Do not
+send paragraphs through a shell, whether the paragraph is a commit message, a CI
+`--message`, or a heredoc.
+
+### 26.27 The assistant: root cause found, two fixes measured, both reverted
+
+§26.25 recorded that the assistant answers the same question correctly about one
+time in four. This is what the investigation found, and what it did not fix.
+
+**Production runs on gpt-5-mini, not Claude.** `eas env:list production` shows
+`OPENAI_API_KEY` and `SHOPIFY_STOREFRONT_TOKEN` and no `ANTHROPIC_API_KEY`, so the
+`openAiKey` branch is what serves every request and `OPENAI_DEFAULT_MODEL` applies.
+`DEFAULT_MODEL = 'claude-sonnet-5'` in the file has never run in production.
+
+**The failure is the query the model invents.** Six identical POSTs of "צריך מקדחה
+לבטון" returned, by the products in the cards:
+
+| run | what it searched for |
+|---|---|
+| 1 | ladders — three ladders came back |
+| 2, 3, 5 | generic tools — tool sets and a contractor's belt |
+| 4, 6 | drills — correct |
+
+The replies match: "נראה שההודעה קצרה", "אולי אתה מחפש מקדחה?", "מחפש כלי עבודה
+כללי?" — a model guessing rather than reading. `tool_choice` was forced to
+`search_catalog` on the first turn (§26.8's "answer with a product, not a question"
+change), and with `reasoning_effort: 'low'` — set so reasoning would not eat the
+token budget — the model fires a tool before it has understood the question.
+
+**Two fixes were built, deployed to preview, and measured. Neither beat the
+baseline.** `assistant-server/scripts/ab-assistant.js` is the harness: four
+realistic Hebrew questions, N runs each, scoring whether the returned *cards* are in
+the category asked for — cards, because a card is what the customer can click, and a
+reply that names products with no `[[handle]]` is a failure however good it reads.
+
+| version | cards in the right category |
+|---|---|
+| live, as deployed | 7/12, then 9/12 on a second run |
+| prefetch the opening search, injected into the system prompt | 8/12 |
+| same, injected as a real `tool_use` + `tool_result` pair | 7/12, and 18s versus 13s |
+
+So the code was reverted to exactly what is deployed. **The variance between two
+measurements of the unchanged live version (7 and 9 of 12) is as large as the
+difference between versions, which means twelve runs cannot decide this** — and it
+also means any future claim of improvement needs far more runs than that.
+
+**What the measurements did settle, and it is worth keeping:**
+
+- `search()` — the Storefront search connection the tool actually uses — is
+  **good**: 5 of 6 realistic questions return the right category from the customer's
+  raw words. An earlier suspicion that Hebrew search was the problem was wrong, and
+  it was wrong because the first measurement used `products(query:)`, a different
+  endpoint. Do not "fix" the search tool.
+- `products(query:)` by contrast is nearly useless for free Hebrew text — 1 of 10 —
+  because it ANDs terms and matches descriptions: "מקדחה" finds drills, "מקדחה
+  לבטון" finds nothing, "נעל" finds a moisture absorber and "צבע" finds a Makita
+  speaker. Scoping to `title:` fixes it completely (10 of 10 with a fallback ladder,
+  see `scripts/measure-search-ladder.js`) — **relevant only if something ever needs
+  `products`, not for the assistant.**
+- A useful side finding: `title:כפפות` returns three products, so the store **does**
+  stock gloves. A plain search for "כפפות עבודה" returning nothing was a search
+  failure, not an out-of-stock.
+
+**The most likely real fix was not testable here: change the model.** The weak link
+is gpt-5-mini at low reasoning effort, and the code already supports Claude — setting
+`ANTHROPIC_API_KEY` in the production environment switches the branch and picks up
+`claude-sonnet-5` with no code change. That needs a key, so it is Dvir's to decide.
+Reading the existing `OPENAI_API_KEY` to measure locally was blocked by the
+permission layer, which is why the A/B ran against deployed previews instead.
+
+Two preview deployments exist and cost nothing to leave: `anshilo-assistant--xvsdwbltoj`
+(system-prompt injection) and `anshilo-assistant--dtf88i3hwb` (tool-result injection).
+
+### 26.28 What is blocked on Dvir, and nothing else is
+
+Round 19 ends with the work split cleanly. Everything reversible has been done or
+measured. Three things are genuinely his, and they are not questions of taste.
+
+**1. Push the slider to the live theme.** The three files are ready in `theme/`, the
+change was verified on `Copy of shilov8theme` by a normalised tag-by-tag diff of the
+rendered collection page, and the rollback copies of the original three sit in the
+session scratchpad. The push itself —
+`shopify theme push --path theme --theme 148378648655 --allow-live --nodelete --only …`
+— **was refused twice by the permission layer**, which is correct: it writes to a
+live storefront. It needs his go-ahead, not a workaround. Note the drift guard now
+reports four undeployed differences, so a full push would also carry
+`nav-thumb.liquid`; that is wanted (it is the width/height fix) and is the only
+extra.
+
+**2. The four GitHub secrets.** Measured absent — `gh` is authenticated as dvir20014
+with admin on `A-N-Shilo/anshilo.com` and the secrets list is empty — which is why
+the assistant and app jobs skipped all five runs. `SHOPIFY_CLI_THEME_TOKEN` was
+deliberately **not** set from here: setting it makes CI push to the live theme
+automatically, which is the same action the permission layer just refused, and
+arranging for a robot to do a blocked thing is still doing it.
+
+**3. An Anthropic key, if the assistant matters.** §26.27 measured the assistant's
+weak link as gpt-5-mini at low reasoning effort, and setting `ANTHROPIC_API_KEY` in
+the production environment switches to `claude-sonnet-5` with no code change.
+
+And one thing that is his to know rather than decide: whether the Blundstone
+`41122xx` numbers live in his stock system. `docs/DECISIONS-NEEDED.md` has both
+fixes written and waiting; that answer picks one and closes ten of the twenty-six
+duplicate groups.
+
+Everything else in §26.19 through §26.27 is either done, measured and recorded, or
+blocked on the Konimbo IP gate, which no amount of local work moves.
+
+### 26.29 §26.22 was wrong, and it was handed to a browser agent as fact
+
+§26.22 concluded the Konimbo gate is "an IP-level decision" and that "a browser agent
+on a normal connection also passes it trivially, since the gate is built to let real
+browsers through." That sentence went into
+`docs/PROMPT-BROWSER-AGENT-PRICES.md` as an established finding.
+
+**It is not established.** A browser agent tried `www.fetaya.com` and `fetaya.com`,
+clicked the "עבור לדף המבוקש" link, and reloaded after waiting — four attempts a
+minute apart — and got the identical gate every time: `<html id="page_no_referer">`,
+`class="limit_no_referer"`, HTTP 200. It never reached a product page, so the
+preliminary question about SKU search was never answerable.
+
+The error was reasoning from the mechanism to the conclusion. The page's own script
+keys on `document.referrer` and a `localStorage` flag, and a comment reads
+`// auto redirect if these stores:` — which reads like an origin allowlist that a real
+browser would satisfy. Seven request-shaping attempts had already failed (§26.22), and
+"a real browser gets through" was the remaining hypothesis rather than a measurement.
+It was written down as though it were the latter.
+
+**The agent's counter-conclusion is also unproven.** It reports the block is "not by
+IP but by entry origin". That does not follow either: a hosted browser agent egresses
+from a datacenter, the same category of address as this machine, so both observations
+are consistent with plain IP reputation. What is established is narrower and worth
+stating exactly: **the gate blocks two independent automated environments, and no
+request-level manipulation has moved it.**
+
+**The decisive test costs ten seconds and only Dvir can run it:** open fetaya.com on
+his own phone or office connection. If it loads, the cause is address reputation and
+the content is reachable by a human. If it does not, Fetaya has closed public browsing
+and the only route is the dealer relationship.
+
+**Neither the agent nor this session will circumvent it.** Forging a Referer,
+reproducing the hash and cookie their script computes, or entering through a cache or
+proxy are all defeating a protection mechanism, and the owner being a genuine customer
+does not change what the action is. The agent refused for exactly this reason and was
+right to.
+
+### 26.30 The 95 zero-price products are not a live risk — measured
+
+The agent flagged that a ₪0 product invites a customer to buy a 600W floodlight for
+nothing, and recommended drafting all 87. **Measured before acting: zero of the 95 can
+be added to a cart.** Every zero-price variant has `availableForSale: false`, so the
+concern is real in principle and does not apply here.
+
+And the theme already solved this deliberately. `snippets/request-price.liquid` exists
+for exactly this case, and `sections/main-product.liquid:191` un-hides it when
+`current_variant.price == 0`. Verified on the live page for SKU 9550: the quote block
+renders, with the "המחיר של הפריט הזה נקבע לפי כמות ודגם" text, a `tel:` link, a
+WhatsApp link and the built-in contact form. **So drafting them would remove working
+pages, not fix a hazard.**
+
+What genuinely remains is only the Google feed, which rejects price 0. The right fix is
+to unpublish those 95 from the Google & YouTube channel while leaving them on the
+online store — they keep their call-for-price page and Merchant Center stops counting
+them. That cannot be done from here: `publications` requires the `read_publications`
+scope and the token answers
+`Access denied for publications field`. It is a bulk action in the admin, or a browser
+agent task.
+
+### 26.31 The pipeline deployed itself. The slider and the Hebrew titles are live.
+
+The four secrets went in, and the next commit that touched `theme/` did the rest with
+nobody pressing anything — which is what "everything updates by itself everywhere" was
+supposed to mean. Run 31074487771: `changes` → `theme` success, push reporting
+`{"theme":{"name":"shilov8theme","role":"live"}}`, then the `theme-deployed` tag created.
+
+**So the live storefront now carries the price slider**, after weeks of it existing only
+in the repo, plus the Hebrew page titles below.
+
+One trap worth recording: **`anshilo.com` served the old page for several minutes after
+the deploy while `3007b3-4.myshopify.com` already served the new one.** The first check
+after the run said the slider was absent and the title still English, and the honest
+reading of that would have been "the push did not land". It had landed. `?cb=` did not
+bypass it either. Check the myshopify domain before concluding a deploy failed.
+
+### 26.32 The bug brief, measured before touched
+
+A long bug brief arrived describing eight tasks. Most of its numbers were exact, some
+were stale because earlier rounds had already fixed them, and one was off by a factor of
+forty.
+
+| brief | measured |
+|---|---|
+| 2,357 images, 0% alt | 2,357 exactly. 20 had alt (1%) |
+| 233 elementor / 247 woocommerce / 100 data-settings / 16 dce | 233 / 247 / **99** / 16 |
+| 14 duplicate SKUs | **15** — the brief omits 9431 |
+| 9 duplicate titles | 9 exactly |
+| 11 products with no image | 11 exactly |
+| 48 empty descriptions | **46** |
+| 1,619 products with no tag | 1,619 exactly |
+| categories: "systematic pass over all 1,791" | **45 wrong.** Category and productType were fixed to zero in round 17; what remains is 26 in Vacuum Accessories, 16 in Hedge Trimmer Accessories, 3 in Fire Alarm Control Panels |
+
+**Done:** alt text on all 2,357, verified at 100% by the API and by real Hebrew `alt`
+attributes on the live page. Hebrew `<title>` on eight pages. `docs/products-without-images.md`
+with admin links for the eleven.
+
+**Not done, and why: dimension-drawing detection.** The brief wanted drawings labelled
+`שרטוט מידות`. That needs the pixels — filenames say nothing (0 of 80 sampled) and only
+70 of 2,357 images are wide enough in aspect to be candidates, which a banner also is.
+`תמונה 2` describes less but is never false; calling a banner a dimension drawing lies to
+a screen reader, and this store publishes an accessibility statement. The 35 wide
+non-primary images are listed in `alt-wide-images.json` for a human.
+
+### 26.33 The WooCommerce markup is five times wider than the brief says
+
+`scripts/clean-description-html.js` is an allow-list cleaner: semantic tags survive,
+everything else has its wrapper deleted and its text kept, and `script`/`style`/`iframe`
+are removed with their contents rather than just unwrapped. It refuses to touch a product
+whose plain text would change — **measured across the whole catalogue, that rejected zero
+products**, so the cleaning is provably text-preserving.
+
+Scoping to elementor/woocommerce only would catch 247. Scoping to any leftover wrapper —
+`<div>`, `class=`, `data-id=`, `data-mce-fragment`, inline `style` — catches **1,376
+products and removes 785,492 characters of markup.** The extras are real junk from the
+same migration: `data-mce-fragment="1"` on every tag, `style="text-align: right"`
+duplicating what RTL already does, and a `<div id="gtx-trans" style="position:absolute;
+left:375px">` left behind by Google Translate that can visibly displace content.
+
+**Not run.** The brief asked for five before/after samples and approval before a mass run,
+and the honest version of that approval request includes the fact that the true scope is
+1,376 and not 247.
+
+### 26.34 What the current token cannot do
+
+`urlRedirects` answers `Access denied` and `publications` answers the same. The
+client-credentials token belongs to `Shilo Image Tools`
+(`write_files, write_products, read_files, read_products`), so **task 8a (the
+`/pages/about` redirect, confirmed 404 while the Hebrew page returns 200) and unpublishing
+the 95 zero-price products from the Google channel both need `write_content` /
+`read_publications`** — a wider token, the admin UI, or a browser agent. Theme work is
+unaffected: that goes through Theme Access.
+
+### 26.35 The Nisani crawl finished after 41 hours. It cannot help the 95, and here is why.
+
+PID 29336 exited on 2026-08-06 and wrote `mobile-app/nisani-catalogue.json` — **2,773
+products, every one priced, 1,041 carrying a SKU.** §26.23 predicted the yield would be
+"close to worthless" by analogy with Aspaka's 80-of-2,943-with-no-prices, and that
+prediction was wrong: the crawl is a complete, priced catalogue. It is the first new
+price source since the platform gate closed.
+
+**It still fills zero of the 95.** Added to `SOURCES` and re-run: 1,035 SKUs indexed,
+95 still unsourced. Measured why, rather than assumed:
+
+| | SKU lengths |
+|---|---|
+| the 87 SKUs behind the 95 zero-price products | 5 chars ×53, 4 chars ×32, 6 chars ×2 |
+| Nisani's 1,019 SKUs | 8 chars ×1002, 11 ×5, 13 ×3, 5 ×2 |
+
+**Overlap: zero.** Not one SKU in common.
+
+This corrects a load-bearing assumption in §26.4, which says "four Fetaya resellers all
+run the same Konimbo platform, so one crawler covers them with a domain swap". Running
+Konimbo is not the same as reselling Fetaya. Nisani sells Nisko and its own lines under
+an 8-digit numbering system of its own, and no amount of crawling it reaches a Fetaya
+part number.
+
+**So crawling more Konimbo sites will not price the 95.** That route is closed on
+identity grounds, not on access grounds — which is a stronger closure than the gate,
+because it would still be closed if the gate lifted tomorrow. The remaining routes are
+unchanged and both go through the supplier: a price list from the Fetaya rep, or a dealer
+login Dvir opens himself.
+
+The catalogue is worth keeping anyway — 2,773 priced electrical products from a supplier
+whose lines the store partly carries, useful the next time an import is considered. It
+is gitignored like every other `*-catalogue.json`, so it lives on disk only; the
+`SOURCES` entry that references it is committed.

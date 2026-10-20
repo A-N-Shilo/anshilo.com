@@ -78,8 +78,20 @@
           </a>
         {%- endif -%}
         {%- if settings.store_whatsapp != blank -%}
+          {%- comment -%}
+            ההגדרה שמורה כמספר בלבד (972545070202). כ-href גולמי הדפדפן קורא
+            אותה ככתובת יחסית — /pages/972545070202 — ו-8 עמודים הובילו ל-404.
+          {%- endcomment -%}
+          {%- liquid
+            assign wa = settings.store_whatsapp | strip
+            assign wa_scheme = wa | slice: 0, 4
+            unless wa_scheme == 'http'
+              assign wa_digits = wa | remove: '+' | remove: '-' | remove: ' ' | remove: '(' | remove: ')'
+              assign wa = 'https://wa.me/' | append: wa_digits
+            endunless
+          -%}
           <a
-            href="{{ settings.store_whatsapp }}"
+            href="{{ wa }}"
             class="btn btn--ghost btn--sm"
             target="_blank"
             rel="noopener"

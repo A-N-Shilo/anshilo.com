@@ -15,10 +15,18 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StorefrontError, formatMoney } from '@/api/client';
 import type { CartLine, MoneyV2 } from '@/api/types';
-import { Button, EmptyState, Icon, PriceText, QuantityStepper, Skeleton } from '@/components';
-import { FREE_SHIPPING_THRESHOLD } from '@/config';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  PriceText,
+  QuantityStepper,
+  Skeleton,
+  StoreLogo,
+} from '@/components';
 import { useCart } from '@/state/CartContext';
-import { colors, radius, shadows, spacing, typography } from '@/theme';
+import { useSettings } from '@/state/SettingsContext';
+import { alignEnd, colors, inputAlign, radius, rtlText, shadows, spacing, typography } from '@/theme';
 
 function errorMessage(e: unknown, fallback: string): string {
   return e instanceof StorefrontError ? e.message : fallback;
@@ -93,7 +101,7 @@ function CartLineRow({
             style={styles.lineTitlePress}
           >
             <Text style={styles.lineTitle} numberOfLines={2}>
-              {merchandise.product.title}
+              {rtlText(merchandise.product.title)}
             </Text>
           </Pressable>
           <Pressable
@@ -114,7 +122,7 @@ function CartLineRow({
 
         {optionsLabel !== '' && (
           <Text style={styles.lineOptions} numberOfLines={1}>
-            {optionsLabel}
+            {rtlText(optionsLabel)}
           </Text>
         )}
         {!merchandise.availableForSale && (
@@ -130,7 +138,9 @@ function CartLineRow({
           <View style={styles.linePriceWrap}>
             <PriceText price={line.cost.totalAmount} compareAt={compareTotal} size="md" />
             {line.quantity > 1 && (
-              <Text style={styles.lineUnitPrice}>{formatMoney(merchandise.price)} ליחידה</Text>
+              <Text style={styles.lineUnitPrice}>
+                {rtlText(`${formatMoney(merchandise.price)} ליחידה`)}
+              </Text>
             )}
           </View>
         </View>
@@ -164,6 +174,8 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const { cart, initializing, busy, itemCount, updateLine, removeLine, setNote, refresh } =
     useCart();
+  /* רף המשלוח החינם נקרא מהחנות — שינוי באדמין מופיע כאן בלי בנייה */
+  const { freeShippingThreshold } = useSettings();
 
   const [refreshing, setRefreshing] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -285,12 +297,13 @@ export default function CartScreen() {
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+      <StoreLogo height={24} />
       <View style={styles.eyebrow} />
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>עגלת הקניות</Text>
         {itemCount > 0 && (
           <Text style={styles.headerCount}>
-            {itemCount === 1 ? 'פריט אחד' : `${itemCount} פריטים`}
+            {rtlText(itemCount === 1 ? 'פריט אחד' : `${itemCount} פריטים`)}
           </Text>
         )}
       </View>
@@ -380,15 +393,15 @@ export default function CartScreen() {
       </View>
 
       {/* פס משלוח חינם — מקביל ל-shipping-bar בעגלה באתר */}
-      {FREE_SHIPPING_THRESHOLD > 0 &&
+      {freeShippingThreshold > 0 &&
         (() => {
           const subtotal = parseFloat(cart.cost.subtotalAmount.amount);
           if (!Number.isFinite(subtotal)) return null;
-          const remaining = FREE_SHIPPING_THRESHOLD - subtotal;
+          const remaining = freeShippingThreshold - subtotal;
           const reached = remaining <= 0;
           const progress = Math.max(
             0,
-            Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100))
+            Math.min(100, Math.round((subtotal / freeShippingThreshold) * 100))
           );
           return (
             <View style={styles.shippingCard} accessibilityRole="progressbar">
@@ -518,7 +531,7 @@ const styles = StyleSheet.create({
     fontSize: typography.h1,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   headerCount: {
@@ -579,7 +592,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     lineHeight: typography.small + 5,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   trashButton: {
@@ -598,14 +611,14 @@ const styles = StyleSheet.create({
   lineOptions: {
     fontSize: typography.tiny,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   lineUnavailable: {
     fontSize: typography.tiny,
     fontWeight: '700',
     color: colors.danger,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   lineBottomRow: {
@@ -647,7 +660,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   notesBody: {
@@ -664,13 +677,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     fontSize: typography.small,
     color: colors.text,
-    textAlign: 'right',
+    /* inputAlign ולא alignEnd — ב-TextInput היישור פיזי, ראו theme.ts */
+    textAlign: inputAlign,
     writingDirection: 'rtl',
   },
   notesStatus: {
     fontSize: typography.tiny,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   notesStatusError: {
@@ -698,7 +712,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   shippingTrack: {
@@ -764,7 +778,7 @@ const styles = StyleSheet.create({
   summaryHint: {
     fontSize: typography.tiny,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   checkoutButton: {

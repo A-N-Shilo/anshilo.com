@@ -17,23 +17,148 @@
       <link rel="icon" type="image/png" href="{{ settings.favicon | image_url: width: 96, height: 96 }}">
     {%- endif -%}
 
-    <title>
-      {{ page_title }}
-      {%- if current_tags %} &ndash; {{ 'general.meta.tagged' | t: tags: current_tags | join: ', ' }}{% endif -%}
-      {%- if current_page != 1 %} &ndash; {{ 'general.meta.page' | t: page: current_page }}{% endif -%}
-      {%- unless page_title contains shop.name %} &ndash; {{ shop.name }}{% endunless -%}
-    </title>
+    {%- comment -%}
+      On /cart, Shopify supplies page_title from its own platform strings rather than
+      from the theme's locales, and it comes through in English ("Your Shopping Cart")
+      on a lang="he-IL" page. The <h1> in main-cart.liquid is already Hebrew via
+      'cart.general.title', so the document title is made to match it.
+    {%- endcomment -%}
+    {%- comment -%}
+      אותה בעיה חוזרת בשמונה עמודים נוספים, ומאותו שורש: page_title מגיע
+      מהמחרוזות של שופיפיי עצמה ולא מהתרגומים של התבנית, ולכן על עמוד
+      lang="he-IL" תג ה-title יוצא אנגלי בעוד ה-H1 עברי. זה נראה שבור בתוצאות
+      החיפוש של גוגל, שקוראות את ה-title ולא את ה-H1.
 
-    {% if page_description %}
-      <meta name="description" content="{{ page_description | escape }}">
-    {% endif %}
+      הרשימה נמדדה על האתר החי: /collections/all החזיר "Products",
+      /collections החזיר "Collections", ארבעת עמודי המדיניות החזירו את השמות
+      האנגליים שנשארו בברירת המחדל של הממשק, ו-/404 החזיר "404 Not Found".
+
+      כל המחרוזות העבריות כבר קיימות בקבצי התרגום ומשמשות את הכותרות בגוף
+      העמוד — כאן הן פשוט מוחלות גם על ה-title, כך שהשניים מסכימים.
+
+      המדיניות מזוהה לפי request.path ולא לפי אובייקט policy, שאינו זמין
+      בפריסה. אותו מיפוי-לפי-handle שכבר עושים snippets/legal-nav.liquid
+      ו-templates/policy.liquid, וכאן עם page_title כנפילה אחורה כדי שסוג
+      מדיניות שהתבנית לא מכירה עדיין יציג משהו.
+    {%- endcomment -%}
+    {%- liquid
+      assign doc_title = page_title
+
+      if template.name == 'cart'
+        assign doc_title = 'cart.general.title' | t
+      elsif template.name == '404'
+        assign doc_title = 'general.error_404.title' | t
+      elsif template.name == 'list-collections'
+        assign doc_title = 'general.breadcrumbs.collections' | t
+      elsif template.name == 'search'
+        assign doc_title = 'general.search.title' | t
+        if search.performed and search.terms != blank
+          assign doc_title = doc_title | append: ': ' | append: search.terms
+        endif
+      elsif template.name == 'collection' and collection.handle == 'all'
+        assign doc_title = 'general.collections.all_products' | t
+      elsif request.path contains '/policies/'
+        assign policy_handle = request.path | split: '/' | last
+        case policy_handle
+          when 'refund-policy'
+            assign doc_title = 'sections.footer.policies.refund' | t
+          when 'shipping-policy'
+            assign doc_title = 'sections.footer.policies.shipping' | t
+          when 'privacy-policy'
+            assign doc_title = 'sections.footer.policies.privacy' | t
+          when 'terms-of-service'
+            assign doc_title = 'sections.footer.policies.terms' | t
+          when 'legal-notice'
+            assign doc_title = 'sections.footer.policies.legal' | t
+          when 'contact-information'
+            assign doc_title = 'sections.footer.policies.contact' | t
+          when 'subscription-policy'
+            assign doc_title = 'sections.footer.policies.subscription' | t
+        endcase
+      endif
+    -%}
+    {%- comment -%}
+      כותרת המסמך. שתי תקלות שהסריקה מצאה, ושתיהן מכאן:
+
+      1. כל כותרות ה-SEO של המוצרים כבר מסתיימות ב-"| א.נ. שילו", אבל הבדיקה
+         הקודמת חיפשה את shop.name המלא ("א.נ. שילו בע"מ - חנות חומרי בניין
+         ואספקה טכנית"), לא מצאה אותו, והוסיפה אותו שוב. כך כל עמוד מוצר יצא עם
+         שם החנות פעמיים ו-2,357 כותרות נמדדו ארוכות מדי. עכשיו המותג נבדק לפי
+         "שילו", ומתווסף בצורתו הקצרה רק כשהוא באמת חסר ורק כשיש לו מקום.
+      2. ה-title נבנה על פני כמה שורות, וירידת שורה נכנסה לתוכו. הוא נבנה
+         במחרוזת אחת ונפלט בשורה אחת.
+    {%- endcomment -%}
+    {%- liquid
+      assign brand_short = 'א.נ. שילו'
+      assign title_max = 65
+      assign full_title = doc_title | strip_newlines | strip
+      if current_tags
+        assign tags_label = 'general.meta.tagged' | t: tags: current_tags | join: ', '
+        assign full_title = full_title | append: ' – ' | append: tags_label
+      endif
+      if current_page != 1
+        assign page_label = 'general.meta.page' | t: page: current_page
+        assign full_title = full_title | append: ' – ' | append: page_label
+      endif
+      unless full_title contains 'שילו'
+        assign branded_title = full_title | append: ' | ' | append: brand_short
+        if branded_title.size <= title_max
+          assign full_title = branded_title
+        endif
+      endunless
+    -%}
+    <title>{{ full_title | escape }}</title>
+
+    {%- comment -%}
+      תיאור לגוגל. 640 עמודים יצאו בלי meta description בכלל: קטגוריות שאין
+      להן תיאור (ועמודי 2, 3... שלהן), עמודי מותג (/collections/vendors),
+      רשימת הבלוג ועמודי המדיניות. כשאין תיאור, נבנה אחד מתוך העמוד עצמו.
+      בעמוד 2 ואילך מתווסף מספר העמוד, אחרת כל עמודי הקטגוריה חולקים אותו
+      תיאור ונספרים ככפולים.
+    {%- endcomment -%}
+    {%- liquid
+      assign meta_description = page_description | strip_html | strip_newlines | strip
+      # /collections מקבל משופיפיי את תיאור החנות — אותו תיאור כמו עמוד הבית
+      if template.name == 'list-collections'
+        assign meta_description = 'כל המחלקות של ' | append: brand_short | append: ': כלי עבודה, חשמל ותאורה, אינסטלציה וברזים, צבע ואיטום, ניקיון, פרזול, סולמות, קמפינג ומחסן עצים - במקום אחד בקרית ענבים.'
+      endif
+      if meta_description == blank
+        case template.name
+          when 'collection'
+            if collection.handle == 'vendors' or collection.handle == 'types'
+              assign meta_description = 'כל המוצרים של ' | append: collection.title | append: ' ב-' | append: brand_short | append: ' - חומרי בניין, כלי עבודה ואספקה טכנית בקרית ענבים. ייעוץ מקצועי בטלפון, איסוף עצמי מהחנות ומשלוחים.'
+            elsif collection.handle == 'all'
+              assign meta_description = 'כל המוצרים של ' | append: brand_short | append: ' - כלי עבודה, חומרי בניין, חשמל ותאורה, אינסטלציה וצבע. יבואנים רשמיים, ייעוץ מקצועי, איסוף עצמי מקרית ענבים ומשלוחים.'
+            else
+              assign meta_description = collection.title | append: ' ב-' | append: brand_short | append: ': ' | append: collection.all_products_count | append: ' מוצרים מהמותגים המובילים. ייעוץ מקצועי בטלפון, איסוף עצמי מהחנות בקרית ענבים ומשלוחים.'
+            endif
+          when 'blog'
+            assign meta_description = blog.title | append: ' - מדריכים מקצועיים של ' | append: brand_short | append: ' על כלי עבודה, חומרי בניין, צבע, איטום ותחזוקת הבית.'
+          when 'article'
+            assign meta_description = article.excerpt_or_content | strip_html | strip_newlines | truncate: 155
+          when 'page'
+            assign meta_description = page.content | strip_html | strip_newlines | truncate: 155
+          else
+            if request.path contains '/policies/'
+              assign meta_description = doc_title | append: ' של ' | append: brand_short | append: ' - חנות חומרי בניין ואספקה טכנית בקיבוץ קרית ענבים.'
+            endif
+        endcase
+        assign meta_description = meta_description | strip
+      endif
+      if meta_description != blank and current_page != 1
+        assign meta_description = meta_description | append: ' (' | append: page_label | append: ')'
+      endif
+    -%}
+    {%- if meta_description != blank -%}
+      <meta name="description" content="{{ meta_description | escape }}">
+    {%- endif -%}
 
     <meta property="og:site_name" content="{{ shop.name }}">
     <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:title" content="{{ page_title | escape }}">
     <meta property="og:type" content="website">
-    {%- if page_description -%}
-      <meta property="og:description" content="{{ page_description | escape }}">
+    {%- if meta_description != blank -%}
+      <meta property="og:description" content="{{ meta_description | escape }}">
     {%- endif -%}
     {%- comment -%}
       Without a fallback the homepage and every ordinary page shares with no
@@ -168,6 +293,15 @@
         --color-accent-rgb: {{ settings.color_accent.rgb | replace: ' ', ', ' }};
         --color-accent-soft: {{ settings.color_accent | color_mix: '#ffffff', 8 }};
         --color-accent-tint: {{ settings.color_accent | color_mix: '#ffffff', 14 }};
+        {%- comment -%}
+          Accent text sitting ON one of the two accent washes above. The accent
+          itself is only 4.47:1 on --color-accent-soft and 4.06:1 on
+          --color-accent-tint, both under the 4.5:1 that WCAG 2.0 AA — and so
+          ת"י 5568 — requires for body-size text. The hover shade clears it on
+          both (6.07:1 and 5.52:1) at the same hue, so it is the readable ink for
+          these surfaces rather than a hover-only colour.
+        {%- endcomment -%}
+        --color-accent-ink: {{ settings.color_accent_hover }};
 
         /* ---- Structure ---- */
         --color-ink: {{ settings.color_ink }};
@@ -198,7 +332,7 @@
         --color-sale: {{ settings.color_sale }};
         --color-highlight: {{ settings.color_highlight }};
         --color-highlight-rgb: {{ settings.color_highlight.rgb | replace: ' ', ', ' }};
-        --color-tile-bg: {{ settings.color_tile_bg | default: settings.color_highlight }};
+        --color-tile-bg: {{ settings.color_tile_bg | default: '#EFE9DF' }};
 
         --color-on-accent: #ffffff;
         --color-on-ink: #eef1f6;
@@ -280,7 +414,93 @@
     {% sections 'header-group' %}
 
     <main id="MainContent" class="main-content" role="main" tabindex="-1">
-      {{ content_for_layout }}
+      {%- comment -%}
+        The four /policies/* documents are the one page type this theme cannot give
+        a template to: `policy` is not in Shopify's list of supported templates, so
+        a templates/policy.liquid is simply ignored and Shopify prints the document
+        itself into content_for_layout, wrapped in its own .shopify-policy__* divs.
+
+        Two things had to be fixed from out here rather than from a template:
+
+        1. Shopify's own heading prints policy.title, and those titles are the
+           English admin defaults ("Refund policy", "Terms of service") — English
+           headings above Hebrew text. The real title is resolved from the locale by
+           handle instead, exactly as the footer and snippets/legal-nav.liquid do,
+           and Shopify's heading is hidden in section-page.css.
+        2. The document arrived with no container and no reading measure, running
+           the full width of the viewport.
+
+        The wrapper only appears on policy pages, so every other page keeps its
+        template's own layout untouched.
+      {%- endcomment -%}
+      {%- if request.page_type == 'policy' -%}
+        {%- liquid
+          assign policy_handle = request.path | split: '/' | last
+          case policy_handle
+            when 'refund-policy'
+              assign policy_label = 'sections.footer.policies.refund' | t
+            when 'shipping-policy'
+              assign policy_label = 'sections.footer.policies.shipping' | t
+            when 'privacy-policy'
+              assign policy_label = 'sections.footer.policies.privacy' | t
+            when 'terms-of-service'
+              assign policy_label = 'sections.footer.policies.terms' | t
+            when 'contact-information'
+              assign policy_label = 'sections.footer.policies.contact' | t
+            when 'subscription-policy'
+              assign policy_label = 'sections.footer.policies.subscription' | t
+            when 'legal-notice'
+              assign policy_label = 'sections.footer.policies.legal' | t
+            else
+              assign policy_label = blank
+          endcase
+        -%}
+        {{ 'section-page.css' | asset_url | stylesheet_tag }}
+        <section class="section main-page main-page--policy">
+          <div class="container container--text">
+            {%- if settings.show_breadcrumbs -%}
+              <nav class="breadcrumbs main-page__crumbs" aria-label="{{ 'general.breadcrumbs.label' | t }}">
+                <a href="{{ routes.root_url }}">{{ 'general.breadcrumbs.home' | t }}</a>
+                <span class="breadcrumbs__sep" aria-hidden="true">
+                  {% render 'icon', name: 'chevron-right', size: 14, class: 'icon--dir' %}
+                </span>
+                <span class="breadcrumbs__current" aria-current="page">{{ policy_label | escape }}</span>
+              </nav>
+            {%- endif -%}
+
+            {%- if policy_label != blank -%}
+              <header class="main-page__head">
+                <h1 class="main-page__title blueprint-underline">{{ policy_label | escape }}</h1>
+                <p class="main-page__lead">{{ 'general.legal.lead' | t }}</p>
+              </header>
+            {%- endif -%}
+
+            <div class="main-page__content rte rte--legal">
+              {{ content_for_layout }}
+            </div>
+
+            {% render 'legal-nav', current_url: request.path %}
+
+            <div class="main-page__footer">
+              <p class="main-page__footer-text">{{ 'general.legal.contact_text' | t }}</p>
+              {%- if settings.store_phone != blank -%}
+                <a href="tel:{{ settings.store_phone | remove: '-' | remove: ' ' }}" class="btn btn--outline btn--sm">
+                  {% render 'icon', name: 'phone', size: 16 %}
+                  <span class="main-page__phone">{{ settings.store_phone }}</span>
+                </a>
+              {%- endif -%}
+              {%- if settings.store_email != blank -%}
+                <a href="mailto:{{ settings.store_email }}" class="btn btn--ghost btn--sm">
+                  {% render 'icon', name: 'mail', size: 16 %}
+                  <span class="main-page__phone">{{ settings.store_email }}</span>
+                </a>
+              {%- endif -%}
+            </div>
+          </div>
+        </section>
+      {%- else -%}
+        {{ content_for_layout }}
+      {%- endif -%}
     </main>
 
     {% sections 'footer-group' %}
@@ -316,5 +536,18 @@
       <li id="a11y-refresh-page-message">{{ 'general.accessibility.refresh_page' | t }}</li>
       <li id="a11y-new-window-message">{{ 'general.accessibility.link_opens_new_tab' | t }}</li>
     </ul>
+
+    {%- comment -%}
+      המומחה של שילו — AI shopping assistant widget (snippets/ai-assistant.liquid).
+      Only rendered when the assistant server URL is configured in theme settings.
+
+      This line is the whole reason the site assistant had never once appeared.
+      The snippet was deployed and the layout that called it only ever existed in
+      the repo: v7 and v8 were built without it, while gaining the /policies/*
+      block above that the repo never had. Neither copy was a superset, so this
+      file is the merge of the two. Do not resolve a future divergence here by
+      overwriting one side with the other — diff them.
+    {%- endcomment -%}
+    {% if settings.assistant_enabled and settings.assistant_url != blank %}{% render 'ai-assistant' %}{% endif %}
   </body>
 </html>

@@ -131,8 +131,12 @@ export const STORE_INFO = {
   /** אותו מספר בלי מקפים — ל-tel: */
   phoneDial: '025343422',
   email: 'info@anshilo.com',
-  /** קישור וואטסאפ קצר של החנות */
-  whatsapp: 'https://wa.link/sp55tw',
+  /**
+   * וואטסאפ העסקי בפורמט בינלאומי. מספר (ולא קישור wa.link) בכוונה:
+   * רק על wa.me אפשר להרכיב הודעה מוכנה. הערך החי מגיע מה-metaobject
+   * בחנות; זה רק ברירת המחדל אם ההגדרות לא נטענו.
+   */
+  whatsapp: '972545070202',
   address: 'קיבוץ קרית ענבים',
   /** כרטיס העסק בגוגל — זהה להגדרת `store_google` בת'ים */
   google: 'https://share.google/RZnNkj7nDmReGLfy1',
@@ -148,21 +152,35 @@ export const STORE_INFO = {
       'https://www.facebook.com/people/%D7%90%D7%A0-%D7%A9%D7%99%D7%9C%D7%95/100065385913315/',
     instagram: 'https://www.instagram.com/a.nshilo',
   },
+  /*
+   * המדיניות של החנות, מתוך שופיפיי ובדומיין של החנות.
+   *
+   * חייבות להיות נגישות **מתוך** האפליקציה ולא רק בדף החנות: שתי החנויות
+   * דורשות קישור למדיניות פרטיות מאפליקציה שמאפשרת פתיחת חשבון, וזו אחת
+   * הבדיקות הראשונות שנעשות בסקירה. עד עכשיו לא היה באפליקציה אף קישור
+   * לשום מדיניות.
+   *
+   * הכתובות נבדקו חיות ומחזירות 200. הן על `anshilo.com` ולא על
+   * `checkout.shopify.com` — שופיפיי מגישה את שתיהן, וזו שבדומיין של
+   * החנות היא זו שאפשר לתת לחנויות האפליקציות.
+   */
+  policies: {
+    privacy: 'https://anshilo.com/policies/privacy-policy',
+    terms: 'https://anshilo.com/policies/terms-of-service',
+    refund: 'https://anshilo.com/policies/refund-policy',
+    shipping: 'https://anshilo.com/policies/shipping-policy',
+  },
 } as const;
 
 /**
  * עמודי המדיניות של החנות.
  *
- * אלה עמודי ה-policies הסטנדרטיים של Shopify, ולכן העריכה שלהם נעשית בממשק
- * הניהול ולא כאן. חובה שיהיו נגישים מתוך האפליקציה: גם App Store וגם
- * Google Play דורשים קישור למדיניות פרטיות בכל אפליקציה שמטפלת בנתוני משתמש.
+ * שני ענפים הגיעו לאותה מסקנה במקביל והגדירו את הכתובות פעמיים. הן חיות
+ * עכשיו ב-`STORE_INFO.policies` בלבד, וזה נשאר ככינוי כדי שקוד שכבר מייבא
+ * אותו לא יישבר — שתי רשימות כתובות הן שתי רשימות שיסתרו זו את זו ביום שבו
+ * אחת מהן תתעדכן.
  */
-export const POLICY_URLS = {
-  privacy: `${STORE_INFO.website}/policies/privacy-policy`,
-  terms: `${STORE_INFO.website}/policies/terms-of-service`,
-  refund: `${STORE_INFO.website}/policies/refund-policy`,
-  shipping: `${STORE_INFO.website}/policies/shipping-policy`,
-} as const;
+export const POLICY_URLS = STORE_INFO.policies;
 
 /**
  * קישור התקשרות — תמיד מהמספר בלי מקפים.
@@ -178,7 +196,7 @@ export const TEL_URL = `tel:${STORE_INFO.phoneDial}`;
  * בלי ההבחנה נבנה קישור מסוג `https://wa.me/https://wa.link/…` שלא נפתח.
  * מחזיר מחרוזת ריקה אם אין וואטסאפ מוגדר — הקורא מסתיר את הכפתור.
  */
-function buildWhatsappUrl(value: string): string {
+export function buildWhatsappUrl(value: string): string {
   const raw = value.trim();
   if (raw === '') return '';
   if (/^https?:\/\//i.test(raw)) return raw;
@@ -189,18 +207,51 @@ function buildWhatsappUrl(value: string): string {
 export const WHATSAPP_URL = buildWhatsappUrl(STORE_INFO.whatsapp);
 
 /**
+ * קישור וואטסאפ שנפתח עם הודעה מוכנה — "היי, הגעתי דרך האפליקציה ואני
+ * מעוניין במוצר: …".
+ *
+ * טקסט מוכן נתמך רק בקישורי `wa.me/<מספר>`; קישור מקוצר (wa.link) מתעלם
+ * מפרמטרים, ולכן שם מוותרים על ההודעה ופותחים את הצ'אט הרגיל — עדיף כפתור
+ * שעובד בלי טקסט מאשר כפתור שבור. ברגע שמחליפים בהגדרות החנות את הקישור
+ * במספר בפורמט בינלאומי, ההודעה המוכנה נדלקת מעצמה, בלי שינוי קוד.
+ */
+export function whatsappWithMessage(baseUrl: string, message: string): string {
+  if (baseUrl === '') return '';
+  if (!/^https:\/\/wa\.me\//i.test(baseUrl)) return baseUrl;
+  return `${baseUrl.split('?')[0]}?text=${encodeURIComponent(message)}`;
+}
+
+/* ---------- המומחה של שילו — עוזר ה-AI ---------- */
+
+/**
+ * כתובת השרת של העוזר (פרויקט assistant-server, רץ על EAS Hosting).
+ * ריק = העוזר עדיין לא חובר; המסך מציג הסבר במקום צ'אט.
+ * אפשר לקבע כאן או להזריק דרך משתנה הסביבה בזמן build/update.
+ */
+export const ASSISTANT_URL = (
+  process.env.EXPO_PUBLIC_ASSISTANT_URL ?? ''
+).replace(/\/+$/, '');
+
+export function isAssistantConfigured(): boolean {
+  return ASSISTANT_URL !== '';
+}
+
+/**
  * ניווט אלינו — הכתובת באפליקציה לחיצה ופותחת את המיקום.
  *
  * מעדיף את כרטיס העסק בגוגל (אותו קישור שהאתר מפנה אליו מהפוטר), ואם הוא
  * ריק נופל לחיפוש הכתובת במפות. תמיד מחזיר קישור פתיח, כך שהכתובת לעולם
  * אינה כפתור מת.
  */
-export const DIRECTIONS_URL =
-  STORE_INFO.google.trim() !== ''
-    ? STORE_INFO.google
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        `${STORE_INFO.name} ${STORE_INFO.address}`
-      )}`;
+export function directionsUrlFor(google: string, address: string): string {
+  const card = google.trim();
+  if (card !== '') return card;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    `${STORE_INFO.name} ${address}`
+  )}`;
+}
+
+export const DIRECTIONS_URL = directionsUrlFor(STORE_INFO.google, STORE_INFO.address);
 
 /**
  * הסכום שממנו המשלוח חינם — חייב להיות זהה להגדרת `free_shipping_threshold`
@@ -210,8 +261,14 @@ export const DIRECTIONS_URL =
 export const FREE_SHIPPING_THRESHOLD = 399;
 
 /** מספרי הקטלוג שמוצגים באפליקציה — תואמים לחנות בפועל */
+/*
+ * שני מספרים שונים מסתובבים כאן, ושניהם נכונים בהקשר שלהם: באדמין יש
+ * 1,918 מוצרים פעילים, אבל לערוץ ה-Headless שהאפליקציה קוראת ממנו
+ * מפורסמים 1,867 — וזה מה שהאפליקציה יכולה להראות. נמדד מול ה-Storefront
+ * API החי (‎8 עמודים של 250), ולא הועתק מהאדמין.
+ */
 export const CATALOG_STATS = {
-  products: 1918,
+  products: 1867,
   collections: 186,
 } as const;
 
@@ -297,6 +354,8 @@ export const BRAND_NAMES: Record<string, string> = {
 export const IMPORTERS = [
   {
     collection: 'makita',
+    /** `vendor` של המוצרים בשופיפיי — מה שמאפשר להציג את המדבקה על המוצר עצמו */
+    vendor: 'מקיטה',
     importer: 'ארגנטולס',
     note: 'יבואן רשמי, אחריות מלאה',
     badgeUrl:
@@ -304,12 +363,29 @@ export const IMPORTERS = [
   },
   {
     collection: 'מילווקי',
+    vendor: 'מילווקי',
     importer: 'דלקו',
     note: 'יבואן רשמי, אחריות מלאה',
     badgeUrl:
       'https://cdn.shopify.com/s/files/1/0581/1024/6991/files/delco-milwaukee-stamp.png?v=1785319031',
   },
 ] as const;
+
+export type Importer = (typeof IMPORTERS)[number];
+
+/**
+ * מדבקת היבואן של מוצר, לפי היצרן שלו בשופיפיי.
+ *
+ * הצמדה ל-`vendor` ולא לקולקציה בכוונה: כרטיס מוצר מופיע גם בחיפוש, גם
+ * במועדפים וגם ב"הנמכרים ביותר", שם אין הקשר של קולקציה — ו-`vendor` מגיע עם
+ * המוצר בכל אחד מהמסלולים האלה. נבדק מול החנות: 354 מוצרי `מקיטה`
+ * ו-61 מוצרי `מילווקי`, שני השמות נקיים ואחידים.
+ */
+export function importerForVendor(vendor: string | null | undefined): Importer | null {
+  const name = vendor?.trim();
+  if (name == null || name === '') return null;
+  return IMPORTERS.find((i) => i.vendor === name) ?? null;
+}
 
 /** הצעות חיפוש קבועות — זהות ל-popular_searches של הת'ים */
 export const POPULAR_SEARCHES = [

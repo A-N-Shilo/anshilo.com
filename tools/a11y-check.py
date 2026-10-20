@@ -96,7 +96,19 @@ def check_contrast() -> None:
         warn("contrast", rel(settings_path), "settings_data.json missing; skipped contrast")
         return
 
-    current = json.load(open(settings_path, encoding="utf-8")).get("current", {})
+    # Shopify allows `/* … */` in theme JSON and its admin writes an
+    # auto-generated header in that form, so strict parsing rejects a file the
+    # platform itself produced. Strip the comments as Shopify does.
+    raw = read(settings_path)
+    try:
+        settings = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            settings = json.loads(re.sub(r"/\*.*?\*/", "", raw, flags=re.S))
+        except json.JSONDecodeError as exc:
+            fail("contrast", rel(settings_path), f"settings_data.json will not parse — {exc}")
+            return
+    current = settings.get("current", {})
     if not isinstance(current, dict):
         warn("contrast", rel(settings_path), "unexpected settings shape; skipped contrast")
         return

@@ -105,6 +105,12 @@ export const COLLECTIONS_QUERY = `#graphql
         title
         description
         image { ...ImageFields }
+        # גיבוי תמונה כשלמחלקה אין תמונה משלה — ראו withFallbackImage ב-client.ts
+        products(first: 4) {
+          nodes {
+            featuredImage { ...ImageFields }
+          }
+        }
       }
       pageInfo {
         hasNextPage
@@ -122,6 +128,11 @@ const COLLECTION_CARD_SELECTION = `
   title
   description
   image { ...ImageFields }
+  products(first: 4) {
+    nodes {
+      featuredImage { ...ImageFields }
+    }
+  }
 `;
 
 /** שמות האליאסים בשאילתות ה-batch — c0, c1, c2… בסדר ה-handles שהועברו */
@@ -179,6 +190,7 @@ export const COLLECTION_PRODUCTS_QUERY = `#graphql
     $after: String
     $sortKey: ProductCollectionSortKeys!
     $reverse: Boolean!
+    $filters: [ProductFilter!]
   ) {
     collection(handle: $handle) {
       id
@@ -186,7 +198,26 @@ export const COLLECTION_PRODUCTS_QUERY = `#graphql
       title
       description
       image { ...ImageFields }
-      products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+      products(
+        first: $first
+        after: $after
+        sortKey: $sortKey
+        reverse: $reverse
+        filters: $filters
+      ) {
+        # הפאסטות שהחנות מציעה למחלקה הזאת — אותן שמוגדרות ב-Search & Discovery
+        # ומופיעות באתר. נבנות דינמית, כך שפילטר שיתווסף בחנות יופיע מעצמו.
+        filters {
+          id
+          label
+          type
+          values {
+            id
+            label
+            count
+            input
+          }
+        }
         nodes { ...ProductCardFields }
         pageInfo {
           hasNextPage

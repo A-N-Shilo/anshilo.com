@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { formatMoney } from '@/api/client';
-import { STORE_INFO } from '@/config';
 import {
   CUSTOMER_ORDERS_QUERY,
   CustomerAuthError,
@@ -19,8 +18,9 @@ import {
   type CustomerOrders,
 } from '@/api/customerAccount';
 import { Button, EmptyState, Icon, SectionHeader, Skeleton } from '@/components';
+import { STORE_INFO, WHATSAPP_URL, whatsappWithMessage } from '@/config';
 import { useAuth } from '@/state/AuthContext';
-import { colors, radius, shadows, spacing, typography } from '@/theme';
+import { alignEnd, colors, radius, rtlText, shadows, spacing, typography } from '@/theme';
 
 /** תאריך בעברית, בלי תלות בנתוני Intl של המנוע (שונים בין iOS לאנדרואיד) */
 function formatDate(iso: string): string {
@@ -46,14 +46,14 @@ function OrderCard({ order }: { order: CustomerOrder }) {
   return (
     <View style={styles.orderCard}>
       <View style={styles.orderHead}>
-        <Text style={styles.orderName}>{order.name}</Text>
+        <Text style={styles.orderName}>{rtlText(order.name)}</Text>
         <Text style={styles.orderTotal} maxFontSizeMultiplier={2}>
           {formatMoney(order.totalPrice)}
         </Text>
       </View>
       <View style={styles.orderMetaRow}>
         <Text style={styles.orderDate} maxFontSizeMultiplier={2}>
-          {formatDate(order.processedAt)}
+          {rtlText(formatDate(order.processedAt))}
         </Text>
         {status != null && <Text style={styles.orderStatus}>{status}</Text>}
       </View>
@@ -61,7 +61,7 @@ function OrderCard({ order }: { order: CustomerOrder }) {
         <View style={styles.orderItems}>
           {order.lineItems.nodes.map((item, i) => (
             <Text key={`${order.id}-${i}`} style={styles.orderItem} numberOfLines={1}>
-              {`${item.quantity} × ${item.title}`}
+              {rtlText(`${item.quantity} × ${item.title}`)}
             </Text>
           ))}
         </View>
@@ -73,49 +73,6 @@ function OrderCard({ order }: { order: CustomerOrder }) {
 export default function AccountScreen() {
   const { status, profile, error, busy, signIn, signOut, getAccessToken } = useAuth();
 
-  /**
-   * בקשת מחיקת חשבון.
-   *
-   * Shopify לא חושפת מחיקת לקוח דרך Customer Account API, ולכן האפליקציה
-   * אינה יכולה למחוק את הרשומה בעצמה. מה שהיא כן עושה: פותחת בקשת מחיקה
-   * מזוהה מול החנות, ומנתקת מיד — כך שהמכשיר אינו מחזיק עוד טוקן.
-   *
-   * מחיקה אמיתית בלחיצה אחת תדרוש נקודת קצה בצד שרת שמשתמשת ב-Admin API.
-   * ראו docs/COMPLIANCE.md.
-   */
-  const requestAccountDeletion = useCallback(() => {
-    Alert.alert(
-      'מחיקת החשבון',
-      'נמחק את החשבון ואת הפרטים האישיים שלכם. היסטוריית ההזמנות תישמר רק ' +
-        'ככל שהחוק מחייב אותנו לשמור מסמכי עסקה. הפעולה אינה הפיכה.\n\n' +
-        'נאשר לכם את הביצוע בדואר אלקטרוני.',
-      [
-        { text: 'ביטול', style: 'cancel' },
-        {
-          text: 'שליחת בקשת מחיקה',
-          style: 'destructive',
-          onPress: () => {
-            const who = profile?.emailAddress ?? profile?.displayName ?? '';
-            const subject = encodeURIComponent('בקשה למחיקת חשבון');
-            const body = encodeURIComponent(
-              `אני מבקש/ת למחוק את חשבוני ואת הפרטים האישיים שלי.\n\n` +
-                `מזהה החשבון: ${who}\n` +
-                `נשלח מתוך אפליקציית ${STORE_INFO.name}.`
-            );
-            Linking.openURL(`mailto:${STORE_INFO.email}?subject=${subject}&body=${body}`).catch(
-              () => {
-                Alert.alert(
-                  'לא הצלחנו לפתוח את הדואר',
-                  `אפשר לשלוח בקשת מחיקה לכתובת ${STORE_INFO.email} או להתקשר ל-${STORE_INFO.phone}.`
-                );
-              }
-            );
-            signOut();
-          },
-        },
-      ]
-    );
-  }, [profile, signOut]);
   const [orders, setOrders] = useState<CustomerOrder[] | null>(null);
   const [ordersError, setOrdersError] = useState('');
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -142,6 +99,60 @@ export default function AccountScreen() {
   useEffect(() => {
     if (status === 'signedIn') loadOrders();
   }, [status, loadOrders]);
+
+  /* ---------- מחיקת חשבון ---------- */
+
+  /**
+   * מסלול מחיקת החשבון — דרישה מחייבת של אפל (App Review 5.1.1(v)):
+   * אפליקציה שמאפשרת יצירת חשבון חייבת לאפשר גם למחוק אותו, ומתוך
+   * האפליקציה. זו אחת מסיבות הדחייה הנפוצות ביותר.
+   *
+   * המחיקה אינה מתבצעת כאן אלא נשלחת כבקשה לצוות החנות, כי אין ברירה:
+   * שופיפיי לא חושפת מחיקת לקוח לא ב-Storefront API ולא ב-Customer
+   * Account API — מחיקת לקוח אפשרית רק מצד האדמין. הדפוס הזה (בקשה
+   * שנפתחת מתוך האפליקציה, עם זהות הלקוח ממולאת מראש) הוא מה שאפל
+   * מקבלת כשהפלטפורמה לא מאפשרת מחיקה תכנותית.
+   *
+   * שני ערוצים, כי אימייל לבדו נכשל בשקט על מכשיר בלי חשבון דואר מוגדר.
+   */
+  const requestAccountDeletion = useCallback(() => {
+    const who = profile?.emailAddress?.emailAddress ?? profile?.displayName ?? '';
+    const subject = 'בקשה למחיקת חשבון';
+    const body =
+      'שלום,\n\nאני מבקש/ת למחוק את חשבון הלקוח שלי ואת הפרטים האישיים ' +
+      'המשויכים אליו.\n\n' +
+      (who !== '' ? `החשבון: ${who}\n` : '') +
+      '\nנשלח מאפליקציית א.נ. שילו.';
+
+    const openMail = () => {
+      const url =
+        `mailto:${STORE_INFO.email}` +
+        `?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      Linking.openURL(url).catch(() => {
+        Alert.alert(
+          'לא הצלחנו לפתוח את הדואר',
+          `אפשר לשלוח בקשה לכתובת ${STORE_INFO.email} או להתקשר ל-${STORE_INFO.phone}.`
+        );
+      });
+    };
+
+    const openWhatsapp = () => {
+      const url = whatsappWithMessage(WHATSAPP_URL, body);
+      if (url === '') return openMail();
+      Linking.openURL(url).catch(openMail);
+    };
+
+    Alert.alert(
+      'מחיקת החשבון שלי',
+      'הבקשה תישלח לצוות החנות, והחשבון והפרטים האישיים יימחקו תוך 14 ימי ' +
+        'עסקים. פרטי הזמנות שכבר בוצעו נשמרים כנדרש בחוק. הפעולה אינה הפיכה.',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        { text: 'וואטסאפ', onPress: openWhatsapp },
+        { text: 'אימייל', style: 'destructive', onPress: openMail },
+      ]
+    );
+  }, [profile]);
 
   /* ---------- לא מחוברים ---------- */
 
@@ -170,7 +181,7 @@ export default function AccountScreen() {
         {error != null && (
           <View style={styles.errorBanner}>
             <Icon name="alert-circle" size={18} color={colors.danger} />
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{rtlText(error)}</Text>
           </View>
         )}
       </ScrollView>
@@ -200,16 +211,16 @@ export default function AccountScreen() {
         </View>
         <View style={styles.profileLabels}>
           <Text style={styles.profileName} numberOfLines={1}>
-            {name != null && name !== '' ? name : 'הלקוח שלנו'}
+            {name != null && name !== '' ? rtlText(name) : 'הלקוח שלנו'}
           </Text>
           {email != null && (
             <Text style={styles.profileMeta} numberOfLines={1}>
-              {email}
+              {rtlText(email)}
             </Text>
           )}
           {phone != null && (
             <Text style={styles.profileMeta} numberOfLines={1}>
-              {phone}
+              {rtlText(phone)}
             </Text>
           )}
         </View>
@@ -219,7 +230,7 @@ export default function AccountScreen() {
         <>
           <SectionHeader title="כתובת המשלוח שלי" />
           <View style={styles.plainCard}>
-            <Text style={styles.addressText}>{address}</Text>
+            <Text style={styles.addressText}>{rtlText(address)}</Text>
           </View>
         </>
       )}
@@ -234,7 +245,7 @@ export default function AccountScreen() {
       ) : ordersError !== '' ? (
         <View style={styles.errorBanner}>
           <Icon name="alert-circle" size={18} color={colors.danger} />
-          <Text style={styles.errorText}>{ordersError}</Text>
+          <Text style={styles.errorText}>{rtlText(ordersError)}</Text>
           <Pressable accessibilityRole="button" onPress={loadOrders} hitSlop={spacing.sm}>
             <Text style={styles.retry}>נסו שוב</Text>
           </Pressable>
@@ -259,17 +270,19 @@ export default function AccountScreen() {
         style={styles.signOutButton}
       />
 
-      {/* מחיקת חשבון — אפל דורשת שכל אפליקציה שמאפשרת יצירת חשבון תציע גם
-          למחוק אותו מתוך האפליקציה עצמה (הנחיה 5.1.1(v)). */}
+      {/*
+        מחיקת חשבון — חובה של אפל (הנחיה 5.1.1(v)), ולכן חייבת להיות נגישה
+        ולא קבורה. מופרדת חזותית מהתנתקות: שתיהן "יציאה", אבל רק אחת בלתי הפיכה.
+      */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="מחיקת החשבון והנתונים שלי"
+        accessibilityLabel="מחיקת החשבון שלי"
         onPress={requestAccountDeletion}
         hitSlop={spacing.sm}
         style={({ pressed }) => [styles.deleteRow, pressed && styles.deletePressed]}
       >
         <Icon name="trash-outline" size={16} color={colors.danger} />
-        <Text style={styles.deleteText}>מחיקת החשבון והנתונים שלי</Text>
+        <Text style={styles.deleteText}>מחיקת החשבון שלי</Text>
       </Pressable>
     </ScrollView>
   );
@@ -344,13 +357,13 @@ const styles = StyleSheet.create({
     fontSize: typography.h3,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   profileMeta: {
     fontSize: typography.small,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -365,7 +378,7 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     lineHeight: typography.body + 6,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -415,7 +428,7 @@ const styles = StyleSheet.create({
   orderItem: {
     fontSize: typography.small,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -432,7 +445,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.small,
     color: colors.danger,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   retry: { fontSize: typography.small, fontWeight: '800', color: colors.danger },
@@ -443,13 +456,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+    /* יעד מגע — לא לרדת מ-44 נקודות (WCAG 2.5.5) */
     minHeight: 44,
   },
   deletePressed: { opacity: 0.6 },
   deleteText: {
     fontSize: typography.small,
+    fontWeight: '600',
     color: colors.danger,
+    textAlign: 'center',
+    writingDirection: 'rtl',
     textDecorationLine: 'underline',
   },
 });

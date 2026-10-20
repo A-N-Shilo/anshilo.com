@@ -5,6 +5,7 @@ import { AppErrorBoundary } from '@/components';
 import { AuthProvider } from '@/state/AuthContext';
 import { CartProvider } from '@/state/CartContext';
 import { FavoritesProvider } from '@/state/FavoritesContext';
+import { SettingsProvider } from '@/state/SettingsContext';
 import { colors, fontFamily, typography } from '@/theme';
 
 // כפיית RTL — בבנייה אמיתית (TestFlight / Play) הפלאגין expo-localization
@@ -29,6 +30,7 @@ if (!I18nManager.isRTL) {
 export default function RootLayout() {
   return (
     <AppErrorBoundary>
+    <SettingsProvider>
     <AuthProvider>
       <CartProvider>
         <FavoritesProvider>
@@ -61,6 +63,7 @@ export default function RootLayout() {
         </FavoritesProvider>
       </CartProvider>
     </AuthProvider>
+    </SettingsProvider>
     </AppErrorBoundary>
   );
 }

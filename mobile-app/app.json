@@ -12,11 +12,17 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.anshilo.shop.test",
       "infoPlist": {
         "CFBundleDevelopmentRegion": "he",
-        "CFBundleAllowMixedLocalizations": true
+        "CFBundleAllowMixedLocalizations": true,
+        "ExpoLocalization_supportsRTL": true,
+        "ExpoLocalization_forcesRTL": true,
+        "CFBundleLocalizations": [
+          "he"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -24,7 +30,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.anshilo.shop"
+      "package": "com.anshilo.shop",
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -51,6 +60,15 @@
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
       ]
     ],
     "experiments": {
@@ -62,7 +80,7 @@
         "projectId": "c36b7d96-fe98-47b2-9455-a1c5bff1ccc4"
       }
     },
-    "owner": "dvir4m",
+    "owner": "a-n-shilo",
     "updates": {
       "url": "https://u.expo.dev/c36b7d96-fe98-47b2-9455-a1c5bff1ccc4"
     },

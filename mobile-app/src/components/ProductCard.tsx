@@ -3,7 +3,8 @@ import { useRouter } from 'expo-router';
 import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ProductCardData } from '@/api/types';
-import { colors, layout, radius, rtl, shadows, spacing, type } from '@/theme';
+import { importerForVendor } from '@/config';
+import { colors, layout, radius, rtl, rtlText, shadows, spacing, type } from '@/theme';
 import { Badge } from './Badge';
 import { Icon } from './Icon';
 import { PriceText } from './PriceText';
@@ -32,6 +33,7 @@ export function ProductCard({ product, width, showStock = true }: ProductCardPro
   const onSale = !soldOut && compareMin > minPrice && minPrice > 0;
   const salePercent = onSale ? Math.round(((compareMin - minPrice) / compareMin) * 100) : 0;
   const hasRange = maxPrice > minPrice;
+  const importer = importerForVendor(product.vendor);
 
   /**
    * כמו באתר (theme/snippets/price.liquid): מוצר טווח שבו רק הווריאנט הזול
@@ -95,16 +97,30 @@ export function ProductCard({ product, width, showStock = true }: ProductCardPro
               <Badge label="אזל מהמלאי" variant="soldout" />
             </View>
           )}
+          {/*
+            מדבקת היבואן הרשמי — בפינה הנגדית לתגית המבצע, כדי ששתיהן לא
+            יתנגשו על אותו מוצר. `insetInlineEnd` ולא `right`, אחרת היא נודדת
+            לצד הלא נכון תחת RTL.
+          */}
+          {importer != null && (
+            <Image
+              source={{ uri: importer.badgeUrl }}
+              style={styles.importerStamp}
+              contentFit="contain"
+              transition={200}
+              accessibilityLabel={`יבואן רשמי ${importer.importer}`}
+            />
+          )}
         </View>
 
         <View style={styles.info}>
           {product.vendor !== '' && (
             <Text style={styles.vendor} numberOfLines={1}>
-              {product.vendor}
+              {rtlText(product.vendor)}
             </Text>
           )}
           <Text style={styles.title} numberOfLines={2}>
-            {product.title}
+            {rtlText(product.title)}
           </Text>
           <View style={styles.priceRow}>
             {hasRange && <Text style={styles.fromLabel}>החל מ־</Text>}
@@ -163,6 +179,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     insetInlineStart: spacing.sm,
+  },
+  importerStamp: {
+    position: 'absolute',
+    top: spacing.sm,
+    insetInlineEnd: spacing.sm,
+    width: 40,
+    height: 40,
   },
   soldOutCenter: {
     position: 'absolute',

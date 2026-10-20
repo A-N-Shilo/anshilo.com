@@ -13,18 +13,30 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Icon, Rule, SectionHeader } from '@/components';
-import {
-  DIRECTIONS_URL,
-  POLICY_URLS,
-  STORE_INFO,
-  STORE_LOGO,
-  TEL_URL,
-  WHATSAPP_URL,
-} from '@/config';
+import { STORE_INFO, STORE_LOGO, isAssistantConfigured } from '@/config';
+import { useSettings } from '@/state/SettingsContext';
 import { useAuth } from '@/state/AuthContext';
-import { colors, radius, shadows, spacing, typography } from '@/theme';
+import { alignEnd, colors, radius, shadows, spacing, typography } from '@/theme';
 
 const WEBSITE_LABEL = STORE_INFO.website.replace(/^https?:\/\//, '');
+
+/**
+ * גרסת האפליקציה לפוטר.
+ *
+ * `nativeApplicationVersion` הוא ה-CFBundleShortVersionString של הבינארי, וזה
+ * המספר הנכון להציג — אבל הוא null בהרצת פיתוח. הגיבוי הקודם היה `'1.0.0'`
+ * מקובע, ולכן הפוטר הציג 1.0.0 גם אחרי שעברנו ל-1.0.1. במקום מספר קבוע
+ * נופלים ל-`expoConfig.version`, שנקרא מ-app.json ומתעדכן יחד עם הקוד.
+ *
+ * מספר הבנייה מוצג בסוגריים כשהוא קיים: כך אפשר לדעת מהטלפון איזו בנייה
+ * מ-TestFlight מותקנת בפועל, בלי לנחש.
+ */
+const APP_VERSION = (() => {
+  const version = Constants.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '';
+  const build = Constants.nativeBuildVersion;
+  if (version === '') return '—';
+  return build != null && build !== '' ? `${version} (${build})` : version;
+})();
 
 /** שורת פעולה בכרטיס — אייקון בבועה, תווית, ושברון "קדימה" (מוטה שמאלה ב-RTL) */
 function ActionRow({
@@ -74,6 +86,8 @@ export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { status, profile } = useAuth();
+  /* טלפון, וואטסאפ, כתובת ושעות — נקראים מהחנות, לא מקובעים בקוד */
+  const { phone, phoneDial, whatsappUrl, address, directionsUrl, hours } = useSettings();
 
   const openLink = useCallback((url: string) => {
     Linking.openURL(url).catch(() => {
@@ -138,6 +152,14 @@ export default function MoreScreen() {
           sublabel="המוצרים ששמרתם לפעם הבאה"
           onPress={() => router.push('/favorites')}
         />
+        {isAssistantConfigured() && (
+          <ActionRow
+            icon="sparkles-outline"
+            label="המומחה של שילו"
+            sublabel="יועץ AI שעונה על שאלות וממליץ מהקטלוג"
+            onPress={() => router.push('/assistant')}
+          />
+        )}
       </View>
 
       {/* יצירת קשר */}
@@ -147,15 +169,15 @@ export default function MoreScreen() {
           first
           icon="call-outline"
           label="התקשרו אלינו"
-          sublabel={STORE_INFO.phone}
-          onPress={() => openLink(TEL_URL)}
+          sublabel={phone}
+          onPress={() => openLink(`tel:${phoneDial}`)}
         />
-        {WHATSAPP_URL !== '' && (
+        {whatsappUrl !== '' && (
           <ActionRow
             icon="logo-whatsapp"
             label="וואטסאפ"
             sublabel="מענה מהיר בצ'אט"
-            onPress={() => openLink(WHATSAPP_URL)}
+            onPress={() => openLink(whatsappUrl)}
           />
         )}
         <ActionRow
@@ -172,22 +194,22 @@ export default function MoreScreen() {
         {/* הכתובת לחיצה ופותחת ניווט אלינו */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`ניווט אל ${STORE_INFO.name}, ${STORE_INFO.address}`}
-          onPress={() => openLink(DIRECTIONS_URL)}
+          accessibilityLabel={`ניווט אל ${STORE_INFO.name}, ${address}`}
+          onPress={() => openLink(directionsUrl)}
           style={({ pressed }) => [styles.addressRow, pressed && styles.rowPressed]}
         >
           <View style={styles.rowIcon}>
             <Icon name="location" size={20} color={colors.accent} knockout={colors.accentSoft} />
           </View>
           <View style={styles.addressLabels}>
-            <Text style={styles.addressText}>{`${STORE_INFO.name}, ${STORE_INFO.address}`}</Text>
+            <Text style={styles.addressText}>{`${STORE_INFO.name}, ${address}`}</Text>
             <Text style={styles.addressHint}>לחצו לניווט</Text>
           </View>
           {/* שברון "קדימה" — ‏dir דואג להיפוך תחת RTL */}
           <Icon name="chevron-forward" size={16} color={colors.textMuted} dir />
         </Pressable>
         <View style={styles.infoDivider} />
-        {STORE_INFO.hours.map((slot) => (
+        {hours.map((slot) => (
           <View key={slot.days} style={styles.hoursRow}>
             <Text style={styles.hoursDays}>{slot.days}</Text>
             <Text style={styles.hoursValue} maxFontSizeMultiplier={2}>
@@ -208,39 +230,39 @@ export default function MoreScreen() {
         </Text>
       </View>
 
-      {/* מדיניות — חובה שיהיו נגישים מתוך האפליקציה, לא רק באתר */}
-      <SectionHeader title="מידע ומדיניות" />
+      {/*
+        מידע משפטי — חובה, לא נוחות.
+        אפל וגוגל שתיהן דורשות שאפליקציה שמאפשרת פתיחת חשבון תיתן גישה
+        למדיניות הפרטיות מתוך האפליקציה עצמה. עד הסבב הזה לא היה באפליקציה
+        אף קישור לשום מדיניות, וזו בדיקה שנעשית מוקדם בסקירה.
+      */}
+      <SectionHeader title="מידע משפטי" />
       <View style={styles.card}>
         <ActionRow
-          first
           icon="lock-closed-outline"
           label="מדיניות פרטיות"
-          sublabel="איזה מידע נאסף ומה נעשה בו"
-          onPress={() => openLink(POLICY_URLS.privacy)}
+          onPress={() => openLink(STORE_INFO.policies.privacy)}
         />
         <ActionRow
           icon="document-text-outline"
-          label="תקנון ותנאי שימוש"
-          sublabel="התנאים שחלים על הזמנה דרך האתר והאפליקציה"
-          onPress={() => openLink(POLICY_URLS.terms)}
+          label="תנאי שימוש"
+          onPress={() => openLink(STORE_INFO.policies.terms)}
         />
         <ActionRow
-          icon="return-down-back-outline"
-          label="ביטול עסקה והחזרים"
-          sublabel="הזכות לבטל, מועדים ואופן ההחזר"
-          onPress={() => openLink(POLICY_URLS.refund)}
+          icon="refresh-outline"
+          label="מדיניות החזרות וביטולים"
+          onPress={() => openLink(STORE_INFO.policies.refund)}
         />
         <ActionRow
           icon="cube-outline"
-          label="משלוחים ואיסוף עצמי"
-          sublabel="זמני אספקה, דמי משלוח ואיסוף מהחנות"
-          onPress={() => openLink(POLICY_URLS.shipping)}
+          label="מדיניות משלוחים"
+          onPress={() => openLink(STORE_INFO.policies.shipping)}
         />
       </View>
 
       {/* פוטר גרסה */}
       <Text style={styles.version} maxFontSizeMultiplier={1.5}>
-        {`${STORE_INFO.name} · גרסה ${Constants.nativeApplicationVersion ?? '1.0.0'}`}
+        {`${STORE_INFO.name} · גרסה ${APP_VERSION}`}
       </Text>
     </ScrollView>
   );
@@ -272,13 +294,13 @@ const styles = StyleSheet.create({
     fontSize: typography.h1,
     fontWeight: '800',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   headerSub: {
     fontSize: typography.small,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -319,7 +341,7 @@ const styles = StyleSheet.create({
     fontSize: typography.h1,
     fontWeight: '800',
     color: colors.onInk,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   brandTagline: {
@@ -327,7 +349,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.onInk,
     opacity: 0.8,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   brandExpRow: {
@@ -340,7 +362,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '700',
     color: colors.accent,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -385,13 +407,13 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   rowSub: {
     fontSize: typography.small,
     color: colors.textMuted,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 
@@ -413,7 +435,7 @@ const styles = StyleSheet.create({
     fontSize: typography.tiny,
     fontWeight: '600',
     color: colors.accent,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   addressText: {
@@ -421,7 +443,7 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   infoDivider: {
@@ -440,7 +462,7 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '600',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   hoursValue: {
@@ -460,7 +482,7 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     lineHeight: typography.body + 9,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
 

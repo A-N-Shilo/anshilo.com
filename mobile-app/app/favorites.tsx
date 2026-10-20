@@ -14,7 +14,7 @@ import { getProductByHandle } from '@/api/client';
 import type { ProductCardData } from '@/api/types';
 import { EmptyState, ErrorView, Icon, ProductCard, SkeletonProductCard } from '@/components';
 import { useFavorites } from '@/state/FavoritesContext';
-import { colors, productGrid, radius, spacing, typography } from '@/theme';
+import { alignEnd, colors, radius, gridColumns, gridItemWidth, spacing, typography } from '@/theme';
 
 function errorText(err: unknown): string {
   return err instanceof Error && err.message !== ''
@@ -31,7 +31,8 @@ export default function FavoritesScreen() {
   const router = useRouter();
   const { favorites } = useFavorites();
   const { width } = useWindowDimensions();
-  const { columns, cardWidth } = productGrid(width);
+  const columns = gridColumns(width);
+  const cardWidth = gridItemWidth(width, columns);
 
   const [status, setStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [message, setMessage] = useState('');
@@ -182,7 +183,7 @@ export default function FavoritesScreen() {
         data={display}
         keyExtractor={(item) => item.id}
         numColumns={columns}
-        key={columns}
+        key={`grid-${columns}`}
         renderItem={renderCard}
         columnWrapperStyle={styles.columnWrapper}
         contentContainerStyle={styles.listContent}
@@ -245,7 +246,7 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     lineHeight: typography.small + 5,
     color: colors.text,
-    textAlign: 'right',
+    textAlign: alignEnd,
     writingDirection: 'rtl',
   },
   partialRetry: {
